@@ -2,12 +2,67 @@ from playwright.sync_api import sync_playwright, expect, TimeoutError as Playwri
 from datetime import datetime
 from pathlib import Path
 import json
-import tkinter as tk
-from tkinter import ttk, messagebox
+# Las líneas de importación de tkinter y ttk han sido movidas dentro del bloque try/except.
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import re
 import requests 
 import time # Importado para la función time.sleep()
+
+# ==========================================================
+# CONDICIONAL PARA ENTORNO HEADLESS (Tkinter/ttk/messagebox)
+# ==========================================================
+try:
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+    GUI_AVAILABLE = True
+    print("[SETUP] ✅ Módulos GUI (Tkinter) cargados para entorno local.")
+    
+except ImportError:
+    print("[SETUP] ⚠️ Módulos GUI (Tkinter/ttk) no encontrados. Ejecutando en modo servidor (headless).")
+    GUI_AVAILABLE = False
+    
+    # ------------------------------------------------------
+    # DEFINICIÓN DE MOCKS PARA EVITAR 'NameError'
+    # ------------------------------------------------------
+    # Clase general para simular módulos (tk, ttk) y objetos de Tkinter (Frame, Button, Label, Text, etc.)
+    class DummyModule:
+        def __init__(self, *args, **kwargs): pass
+        def __getattr__(self, name): return lambda *args, **kwargs: self
+        def Tk(self): return self
+        # Métodos específicos usados en EnjoyForm que deben existir
+        def mainloop(self): pass
+        def protocol(self, *args): pass
+        def quit(self): pass
+        def destroy(self): pass
+        def geometry(self, *args): pass
+        def resizable(self, *args): pass
+        def columnconfigure(self, *args): pass
+        def rowconfigure(self, *args): pass
+        def after(self, *args): pass
+        def config(self, *args, **kwargs): return self
+        def delete(self, *args): pass
+        def insert(self, *args): pass
+        def grid(self, *args, **kwargs): pass
+        def submit(self, *args): pass
+        def shutdown(self, *args): pass
+
+    # Mock para variables de control (StringVar)
+    class DummyStringVar:
+        def __init__(self, *args, **kwargs): self.value = kwargs.get('value', '')
+        def get(self): return self.value
+        def set(self, val): self.value = val
+    
+    # Mock para messagebox
+    class DummyMessagebox:
+        def showerror(*args, **kwargs): 
+            print("Mock: messagebox.showerror llamado (Ignorado en servidor)")
+
+    # Asignación de mocks a los nombres de las variables globales
+    tk = DummyModule()
+    ttk = DummyModule()
+    messagebox = DummyMessagebox()
+    tk.StringVar = DummyStringVar
+
 
 # ===============================
 # CONFIGURACIÓN
@@ -850,5 +905,10 @@ def run_bot(headless=False):
 # EJECUCIÓN
 # ===============================
 if __name__ == "__main__":
-    app = EnjoyForm()
-    app.run()
+    if GUI_AVAILABLE:
+        # Se ejecuta solo si Tkinter se pudo importar (entorno de escritorio)
+        app = EnjoyForm()
+        app.run()
+    else:
+        # Se omite la ejecución de la GUI en el servidor headless
+        log("🚫 Ejecución directa omitida en modo headless.")
