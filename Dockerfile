@@ -1,24 +1,17 @@
-# Usa una imagen base de Python que tenga permisos de root para apt
-FROM python:3.11-slim
+# 1. USAR LA IMAGEN BASE OFICIAL DE PLAYWRIGHT
+FROM mcr.microsoft.com/playwright/python:latest
 
 # Establece el directorio de trabajo
 WORKDIR /app
 
-# 1. Copia el archivo de requerimientos e instala las dependencias de Python
+# 2. Copia el archivo de requerimientos e instala SOLO las dependencias de Python
+# NO necesitamos instalar Playwright ni sus dependencias de SO.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. INSTALA DEPENDENCIAS DE LINUX REQUERIDAS POR PLAYWRIGHT (USANDO EL COMANDO OFICIAL)
-RUN apt-get update && \
-    playwright install-deps chromium && \
-    rm -rf /var/lib/apt/lists/*
-
-# 3. DESCARGA E INSTALA EL BINARIO DE CHROMIUM
-RUN playwright install chromium
-
-# 4. Copia el resto de los archivos del proyecto (incluyendo tus .py)
+# 3. Copia el resto de los archivos del proyecto
 COPY . .
 
-# Comando para iniciar la aplicación (usa gunicorn si lo tienes en requirements.txt)
-# Si no usas gunicorn, cámbialo a CMD ["python", "servidor_enjoy.py"]
+# 4. Comando para iniciar la aplicación
+# (Asumiendo que Gunicorn está en requirements.txt)
 CMD gunicorn servidor_enjoy:app --workers 4 --bind 0.0.0.0:$PORT
