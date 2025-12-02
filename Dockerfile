@@ -8,14 +8,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. INSTALA DEPENDENCIAS DE LINUX REQUERIDAS POR PLAYWRIGHT
-# El comando apt-get SÍ funciona aquí porque se ejecuta como root en la fase de build de Docker
+# 2. INSTALA DEPENDENCIAS DE LINUX REQUERIDAS POR PLAYWRIGHT (USANDO EL COMANDO OFICIAL)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    libnss3 libatk-bridge2.0-0 libcups2 libgbm-dev libgtk-3-0 libxss1 \
-    && rm -rf /var/lib/apt/lists/*
+    playwright install-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
 
-# 3. DESCARGA E INSTALA EL BINARIO DE CHROMIUM DE PLAYWRIGHT
+# 3. DESCARGA E INSTALA EL BINARIO DE CHROMIUM
 RUN playwright install chromium
 
 # 4. Copia el resto de los archivos del proyecto (incluyendo tus .py)
