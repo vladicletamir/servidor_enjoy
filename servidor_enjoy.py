@@ -43,23 +43,138 @@ def estado_servidor():
     })
 
 @app.route('/buscar', methods=['POST'])
-def buscar_actividad():
+def buscar_plazas():
     try:
-        data = request.json
+        data = request.get_json()
+        print(f"📱 Petición recibida: {data}")
         
-        # PASO DE DEPURACIÓN CRÍTICO: Imprimir los datos recibidos en los logs de Docker
-        print(f"Datos recibidos para la búsqueda: {data}", flush=True) 
-
-        # Devuelve el JSON recibido para confirmarlo en tu móvil
-        return jsonify({
-            "estado": "error",
-            "mensaje": f"DEBUG: Recibido. Actividad: {data.get('actividad')}, Dia: {data.get('dia')}, Mes: {data.get('mes')}, Hora: {data.get('hora')}"
-        })
+        if not IMPORT_SUCCESS:
+            return jsonify({
+                'estado': 'error', 
+                'mensaje': 'Error: No se pudo importar deep_kivy'
+            })
         
-        # ... El resto de tu lógica de Playwright debe ir aquí después de la depuración ...
-
+        # Extraer datos (manejar diferentes nombres)
+        actividad = data.get('actividad', data.get('activity_name', 'BODY PUMP'))
+        dia = data.get('dia', data.get('DIA', '15'))
+        hora = data.get('hora', data.get('HORA', '08:00'))
+        mes = data.get('mes', data.get('MES', 'enero'))
+        
+        print(f"🔍 Procesado - Actividad: {actividad}, Día: {dia}, Hora: {hora}, Mes: {mes}")
+        
+        # ✅ CONEXIÓN CON DEEP_KIVY
+        try:
+            import deep_kivy
+            
+            # CONFIGURAR VARIABLES GLOBALES (como espera deep_kivy)
+            deep_kivy.ACTIVITY_NAME = actividad
+            deep_kivy.ACTIVITY_HOUR = hora
+            deep_kivy.TARGET_DAY = dia
+            deep_kivy.TARGET_MONTH = mes
+            
+            print(f"🎯 Configuración deep_kivy - ACTIVITY_NAME: {deep_kivy.ACTIVITY_NAME}")
+            print(f"🎯 Configuración deep_kivy - TARGET_DAY: {deep_kivy.TARGET_DAY}")
+            print(f"🎯 Configuración deep_kivy - TARGET_MONTH: {deep_kivy.TARGET_MONTH}")
+            print(f"🎯 Configuración deep_kivy - ACTIVITY_HOUR: {deep_kivy.ACTIVITY_HOUR}")
+            
+            # Ejecutar búsqueda
+            plazas = run_bot(headless=True)
+            
+            print(f"🎯 Resultado de búsqueda: {plazas} plazas")
+            
+            if plazas > 0:
+                mensaje = f'🎉 {plazas} PLAZAS DISPONIBLES!\n{actividad} - {hora}'
+                
+                # ✅ ENVIAR A TELEGRAM
+                try:
+                    telegram_msg = f"🚨 PLAZAS ENCONTRADAS!\n{actividad} - {hora}\nDía: {dia} {mes}\nPlazas: {plazas}"
+                    send_telegram_message(telegram_msg)
+                    print("✅ Mensaje de Telegram enviado")
+                except Exception as e:
+                    print(f"⚠️ Error enviando Telegram: {e}")
+                
+                return jsonify({
+                    'estado': 'plazas', 
+                    'mensaje': mensaje,
+                    'plazas': plazas
+                })
+                
+            elif plazas == 0:
+                mensaje = '🔍 No hay plazas, monitorizando...'
+                
+                # Enviar notificación a Telegram
+                try:
+                    telegram_msg = f"🔍 Monitorizando: {actividad} - {hora} (Día {dia} {mes})"
+                    send_telegram_message(telegram_msg)
+                except Exception as e:
+                    print(f"⚠️ Error enviando Telegram: {e}")
+                
+                # Generar ID único para esta monitorización
+                monitor_id = str(uuid.uuid4())[:8]
+                
+                # Iniciar monitorización en hilo separado
+                def monitorizar_con_variables(mon_id, act, hr, d, m):
+                    try:
+                        import deep_kivy as dk_monitor
+                        dk_monitor.ACTIVITY_NAME = act
+                        dk_monitor.ACTIVITY_HOUR = hr
+                        dk_monitor.TARGET_DAY = d
+                        dk_monitor.TARGET_MONTH = m
+                        
+                        # Marcar como activa
+                        monitor_active[mon_id] = {
+                            'actividad': act,
+                            'hora': hr,
+                            'dia': d,
+                            'mes': m,
+                            'inicio': time.time()
+                        }
+                        
+                        # Ejecutar monitorización
+                        dk_monitor.run_monitor()
+                        
+                    except Exception as e:
+                        print(f"💥 Error en hilo de monitorización: {e}")
+                    finally:
+                        # Eliminar de activas cuando termine
+                        if mon_id in monitor_active:
+                            del monitor_active[mon_id]
+                
+                thread = threading.Thread(
+                    target=monitorizar_con_variables,
+                    args=(monitor_id, actividad, hora, dia, mes),
+                    daemon=True
+                )
+                thread.start()
+                
+                return jsonify({
+                    'estado': 'monitorizando', 
+                    'mensaje': f'🔍 Monitorizando cada 5 minutos... (ID: {monitor_id})',
+                    'monitor_id': monitor_id
+                })
+            else:
+                return jsonify({
+                    'estado': 'error', 
+                    'mensaje': '❌ No se encontró la actividad'
+                })
+                
+        except Exception as e:
+            print(f"💥 Error en deep_kivy: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            return jsonify({
+                'estado': 'error', 
+                'mensaje': f'Error en búsqueda: {str(e)}'
+            })
+            
     except Exception as e:
-        return jsonify({"estado": "error", "mensaje": f"Error al procesar la solicitud: {str(e)}"})
+        print(f"💥 Error en /buscar: {e}")
+        return jsonify({
+            'estado': 'error', 
+            'mensaje': f'Error del servidor: {str(e)}'
+        })
+
 @app.route('/test')
 def test_page():
     """Página HTML simple para probar desde el móvil"""
@@ -238,21 +353,23 @@ def buscar_simple():
         return jsonify({'estado': 'error', 'mensaje': str(e)})
 
 
+# Al final del archivo, cambia a:
 if __name__ == '__main__':
-    # Obtener puerto de variable de entorno (para producción)
+    # Obtener puerto de variable de entorno
     port = int(os.environ.get('PORT', 5001))
     
     print("=" * 50)
     print("🚀 INICIANDO SERVIDOR ENJOY...")
-    print("📍 URL local: http://localhost:5001")
-    print("📍 Modo: PRODUCCIÓN")
+    print(f"📍 Puerto: {port}")
+    print("📍 Modo: PRODUCCIÓN (Render.com)")
     print("=" * 50)
     
-    # Verificar import
-    if not IMPORT_SUCCESS:
-        print("❌ ADVERTENCIA: deep_kivy no se pudo importar")
-        print("   Usando modo de prueba...")
-    else:
-        print("✅ deep_kivy importado correctamente")
+    # Instalar Playwright si es necesario
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("⚠️ Instalando Playwright...")
+        import subprocess
+        subprocess.run(["playwright", "install", "chromium"], check=True)
     
     app.run(host='0.0.0.0', port=port, debug=False)
