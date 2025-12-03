@@ -552,6 +552,7 @@ class DateNavigator:
                 if DateNavigator._click_day_directly(page):
                     log("✅ Click directo en día exitoso")
                     page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
+                    time.sleep(4)
                     if DateNavigator._verify_activities_loaded(page):
                         log("🎉 Fecha seleccionada y actividades cargadas")
                         return True
@@ -923,6 +924,7 @@ if __name__ == "__main__":
     else:
         # Se omite la ejecución de la GUI en el servidor headless
         log("🚫 Ejecución directa omitida en modo headless.")
+
 
 
 
