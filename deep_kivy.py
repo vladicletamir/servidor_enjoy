@@ -80,7 +80,7 @@ PASSWORD = "Kerkrade1126" # <--- VERIFICAR
 TIMEOUT_CONFIG = {
     'navigation': 45000, # Antes 30000
     'element': 15000,    # Antes 10000
-    'short_wait': 5000,  # Antes 2000
+    'short_wait': 10000,  # Antes 2000
     'long_wait': 10000    # Antes 5000
 }
 
@@ -599,13 +599,13 @@ class DateNavigator:
                         if elem.is_visible() and elem.is_enabled():
                             log(f"   📌 Elemento encontrado: '{elem.text_content().strip()}'")
                             try:
-                                with page.expect_navigation(timeout=3000, wait_until="domcontentloaded"):
+                                with page.expect_navigation(timeout=10000, wait_until="domcontentloaded"):
                                     elem.click()
                                 log(f"   ✅ Click exitoso con navegación ({tipo})")
                             except:
                                 elem.click()
                                 log(f"   ✅ Click exitoso sin navegación ({tipo})")
-                            page.wait_for_timeout(3000)
+                            page.wait_for_timeout(10000)
                             return True
                     except Exception: continue
             except Exception as e:
@@ -623,7 +623,7 @@ class DateNavigator:
                     const html = document.body.innerHTML.toLowerCase();
                     return html.includes('actividad') || html.includes('plaza');
                 }""",
-                timeout=5000
+                timeout=10000
             )
             return True
         except: return False
@@ -913,4 +913,5 @@ if __name__ == "__main__":
     else:
         # Se omite la ejecución de la GUI en el servidor headless
         log("🚫 Ejecución directa omitida en modo headless.")
+
 
