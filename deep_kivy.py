@@ -2,11 +2,11 @@ from playwright.sync_api import sync_playwright, expect, TimeoutError as Playwri
 from datetime import datetime
 from pathlib import Path
 import json
-# Las líneas de importación de tkinter y ttk han sido movidas dentro del bloque try/except.
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import re
 import requests 
-import time # Importado para la función time.sleep()
+import time
+import os
 
 # ==========================================================
 # CONDICIONAL PARA ENTORNO HEADLESS (Tkinter/ttk/messagebox)
@@ -24,12 +24,10 @@ except ImportError:
     # ------------------------------------------------------
     # DEFINICIÓN DE MOCKS PARA EVITAR 'NameError'
     # ------------------------------------------------------
-    # Clase general para simular módulos (tk, ttk) y objetos de Tkinter (Frame, Button, Label, Text, etc.)
     class DummyModule:
         def __init__(self, *args, **kwargs): pass
         def __getattr__(self, name): return lambda *args, **kwargs: self
         def Tk(self): return self
-        # Métodos específicos usados en EnjoyForm que deben existir
         def mainloop(self): pass
         def protocol(self, *args): pass
         def quit(self): pass
@@ -46,18 +44,15 @@ except ImportError:
         def submit(self, *args): pass
         def shutdown(self, *args): pass
 
-    # Mock para variables de control (StringVar)
     class DummyStringVar:
         def __init__(self, *args, **kwargs): self.value = kwargs.get('value', '')
         def get(self): return self.value
         def set(self, val): self.value = val
     
-    # Mock para messagebox
     class DummyMessagebox:
         def showerror(*args, **kwargs): 
             print("Mock: messagebox.showerror llamado (Ignorado en servidor)")
 
-    # Asignación de mocks a los nombres de las variables globales
     tk = DummyModule()
     ttk = DummyModule()
     messagebox = DummyMessagebox()
@@ -88,7 +83,6 @@ TIMEOUT_CONFIG = {
 TELEGRAM_BOT_TOKEN = "7576773682:AAE8_4OC9lLAFNlOWBbFmYGj5MFDfkQxAsU" # <--- TU TOKEN
 TELEGRAM_CHAT_ID = "1326867840" # <--- TU ID
 # ------------------------------------
-
 # Variables globales (se establecen al iniciar la búsqueda)
 ACTIVITY_NAME = ""
 ACTIVITY_HOUR = ""
@@ -98,7 +92,6 @@ TARGET_MONTH = ""
 # ===============================
 # CONFIGURACIÓN DE LISTAS
 # ===============================
-# Generamos las horas de 17:00 a 20:30 en tramos de 15 min
 HORAS_DISPONIBLES = []
 for h in range(7, 21): 
     for m in [0, 15, 30, 45]:
@@ -170,13 +163,11 @@ def run_monitor(activity, hour, day, month):
     
     log(f"🕵️‍♂️ INICIANDO MONITORIZACIÓN: {activity} a las {hour} - DÍA {day}/{month}")
     
-    # 5 minutos = 300 segundos
-    SLEEP_SECONDS = 300 
+    SLEEP_SECONDS = 300  # 5 minutos
     
     while True:
         log("🔄 Ejecutando verificación en modo monitor...")
         
-        # Llamamos a la función principal en modo silencioso (headless=True)
         plazas = run_bot(headless=True) 
         
         if plazas > 0:
@@ -188,7 +179,7 @@ def run_monitor(activity, hour, day, month):
                            f"¡Reserva inmediatamente!"
             send_telegram_message(msg_telegram)
             log("🎉 Monitorización finalizada con éxito (Plazas encontradas).")
-            break # Salir del bucle
+            break
         
         elif plazas == 0:
             log(f"😴 Actividad sigue COMPLETA. Esperando {SLEEP_SECONDS // 60} minutos.")
@@ -196,14 +187,15 @@ def run_monitor(activity, hour, day, month):
             
         elif plazas == -2:
              log("🥳 El usuario se ha inscrito durante la monitorización. Deteniendo.")
-             break # Ya inscrito, detener monitor
+             break
             
         else: # plazas == -1 (Error)
             log("❌ Error en la verificación. Intentando de nuevo en 5 minutos.")
             time.sleep(SLEEP_SECONDS)
 
+
 # ===============================
-# INTERFAZ GRÁFICA
+# INTERFAZ GRÁFICA (SOLO LOCAL)
 # ===============================
 class EnjoyForm:
     def __init__(self):
@@ -215,7 +207,6 @@ class EnjoyForm:
         self.setup_ui()
     
     def setup_ui(self):
-        # ... (setup_ui, _add_combo, update_result_text, on_close permanecen igual) ...
         main_frame = ttk.Frame(self.root, padding="25")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
@@ -312,9 +303,7 @@ class EnjoyForm:
         self.update_result_text(f"💥 ERROR TÉCNICO:\n{error}")
         messagebox.showerror("Error", f"Ocurrió un error:\n{error}")
 
-    # --- Lógica de Resultados y Monitorización (MODIFICADA) ---
     def mostrar_resultado(self, plazas):
-        """Muestra el resultado en la interfaz y decide si lanzar monitorización"""
         self.search_btn.config(state="normal")
         
         info = f"📋 {ACTIVITY_NAME} | 🕒 {ACTIVITY_HOUR}\n📅 {TARGET_DAY} de {TARGET_MONTH}"
@@ -341,7 +330,6 @@ class EnjoyForm:
                                 f"**Activando monitorización (chequeo cada 5 min).**"
             self.executor.submit(send_telegram_message, msg_telegram_full)
             
-            # LANZAR EL MONITOR EN UN NUEVO HILO
             self.executor.submit(run_monitor, ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH)
             
             msg = msg_app 
@@ -363,6 +351,7 @@ class EnjoyForm:
             
         self.update_result_text(msg)
 
+
 # ===============================
 # GESTIÓN DE SESIÓN
 # ===============================
@@ -372,7 +361,6 @@ class SessionManager:
     def is_logged_in(page):
         """Detecta si hay sesión activa y NO estamos en la página de login."""
         try:
-            # 1. Comprobar indicadores de éxito
             indicators_of_success = [
                 page.locator("text=Planificación"),
                 page.locator("a:has-text('Cerrar sesión')"),
@@ -380,10 +368,9 @@ class SessionManager:
             
             is_success_indicated = any(ind.count() > 0 for ind in indicators_of_success) or "planning" in page.url.lower()
 
-            # 2. Comprobar si estamos en la URL de LOGIN (Esto anula el éxito)
             is_on_login_page = "login" in page.url.lower()
 
-            return is_success_indicated and not is_on_login_page # Solo True si hay indicadores de éxito Y NO estamos en el login
+            return is_success_indicated and not is_on_login_page
         except Exception:
             return False
     
@@ -441,21 +428,18 @@ class SessionManager:
             return False
     
     @staticmethod
-    @staticmethod
     def _click_login_button(page):
-        # 1. Selectores basados en texto (actuales, más un par de variantes)
         selectors = [
             "button:has-text('Iniciar sesión')",
             "a:has-text('Iniciar sesión')",
-            "button:has-text('Acceder')",   # <--- NUEVO: "Acceder"
+            "button:has-text('Acceder')",
             "button:has-text('Entrar')"
         ]
         
-        # 2. Selectores basados en la estructura o el rol (más robustos)
         robust_selectors = [
-            "[role='button']:has-text('sesión' i), [role='button']:has-text('Acceder' i)", # Elementos con rol de botón y texto 'sesión' o 'Acceder'
-            "button[type='submit']", # Botones de envío
-            "a[href*='login']",      # Enlaces con 'login' en la URL
+            "[role='button']:has-text('sesión' i), [role='button']:has-text('Acceder' i)",
+            "button[type='submit']",
+            "a[href*='login']",
         ]
         
         all_selectors = selectors + robust_selectors
@@ -463,7 +447,6 @@ class SessionManager:
         log("🖱️ Buscando botón de inicio de sesión...")
         for selector in all_selectors:
             try:
-                # Usamos page.locator(selector).all() para iterar
                 elements = page.locator(selector).all()
                 for elem in elements:
                     if elem.is_visible() and elem.is_enabled():
@@ -530,8 +513,9 @@ class SessionManager:
                 except: continue
         return False
 
+
 # ===============================
-# GESTIÓN DE FECHAS (ROBUSTO)
+# GESTIÓN DE FECHAS
 # ===============================
 class DateNavigator:
     @staticmethod
@@ -680,8 +664,9 @@ class DateNavigator:
     def _select_day(page):
         return DateNavigator._click_day_directly(page)
 
+
 # ===============================
-# BÚSQUEDA DE ACTIVIDADES (ROBUSTO)
+# BÚSQUEDA DE ACTIVIDADES
 # ===============================
 class ActivityFinder:
     @staticmethod
@@ -716,20 +701,16 @@ class ActivityFinder:
             return True
         except: return False
 
-    # --- MODIFICADO: Búsqueda robusta con subida de niveles ---
-    # DENTRO DE LA CLASE ActivityFinder (REEMPLAZO COMPLETO)
     @staticmethod
     def find_activity(frame):
-        """Busca la actividad usando filtros de contenido (MÁS ROBUSTO)"""
+        """Busca la actividad usando filtros de contenido"""
         global ACTIVITY_NAME, ACTIVITY_HOUR
         
-        # 1. Usar expresión regular para búsqueda insensible a mayúsculas/minúsculas
         activity_regex = f"/{re.escape(ACTIVITY_NAME)}/i"
         
         log(f"🎯 Buscando tarjeta con: '{ACTIVITY_NAME}' (Regex: {activity_regex}) Y '{ACTIVITY_HOUR}'")
         
         try:
-            # Búsqueda inicial del nombre de la actividad (Insensible a mayúsculas)
             candidates = frame.locator(f"text={activity_regex}")
             count = candidates.count()
             log(f"   🔎 Elementos con el nombre encontrados: {count}")
@@ -740,21 +721,17 @@ class ActivityFinder:
                 element = candidates.nth(i)
                 parent = element
                 
-                # 2. Buscamos en el contenedor (hasta 7 niveles de padre)
                 for level in range(7): 
                     try:
                         text = parent.text_content()
                         clean_text = " ".join(text.split()).upper()
                         
-                        # 3. Verificar si el contenedor contiene la HORA
-                        # Usamos la hora completa o la hora sin minutos para mayor robustez
-                        hour_check = ACTIVITY_HOUR.replace(':00', '') 
+                        hour_check = ACTIVITY_HOUR.replace(':00', '')
                         
                         if ACTIVITY_HOUR in clean_text or hour_check in clean_text:
                             log(f"   ✅ ¡Coincidencia de HORA encontrada en contenedor (Nivel {level})!")
                             log(f"   📄 Texto contenedor analizado: {clean_text[:100]}...")
                             
-                            # 4. Extraemos plazas de este contenedor confirmado
                             plazas = ActivityFinder._extract_spots(parent)
                             
                             if plazas != -1: 
@@ -772,28 +749,20 @@ class ActivityFinder:
         log("❌ No se encontró la combinación Actividad + Hora + Plazas en un contenedor válido")
         return -1
     
-    # --- MODIFICADO: Extracción de plazas (Filtra "Inscrito" y "42") ---
-    # DENTRO DE LA CLASE ActivityFinder (REEMPLAZO COMPLETO)
     @staticmethod
     def _extract_spots(element):
-        """Extrae plazas, maneja COMPLETO, INSCRITO, y ajusta la restricción de números."""
+        """Extrae plazas, maneja COMPLETO, INSCRITO"""
         text = element.text_content()
         clean_text = " ".join(text.split()) 
         
         log(f"   🔢 Analizando plazas en: '{clean_text[:60]}...'")
 
-        # 1. BÚSQUEDA POR SELECTORES Y BOTONES (MÁXIMA PRIORIDAD)
-        # --------------------------------------------------------
-        
-        # Buscar botones o indicadores de estado en el contenedor
-        # Buscamos botones de "Anular", "Apuntarse" o indicadores visuales
-        
-        # Buscamos 'Anular' (si aparece 'Anular', el usuario está INSCRITO)
+        # Buscar 'Anular' (si aparece 'Anular', el usuario está INSCRITO)
         try:
             if element.locator("button:has-text('Anular')").count() > 0 or \
                element.locator("button:has-text('Cancelar')").count() > 0:
                 log("   ✅ DETECTADO BOTÓN 'Anular/Cancelar'. Usuario INSCRITO.")
-                return -2 # Código para 'INSCRITO'
+                return -2
         except Exception: pass
         
         # Buscamos 'COMPLETO' o 'Lista de Espera'
@@ -801,36 +770,26 @@ class ActivityFinder:
             log("   🔴 DETECTADO TEXTO 'COMPLETO' o 'Lista de Espera'.")
             return 0
 
-        # Si el texto ya contiene 'INSCRITO' y no tiene el botón 'Anular', es una lectura errónea,
-        # pero para ser cautelosos, si no detectamos "COMPLETO" y vemos "INSCRITO" aún lo marcamos.
         if "inscrito" in clean_text.lower() or "reservado" in clean_text.lower():
             log("   ⚠️ DETECTADO TEXTO 'INSCRITO' (Sin botón Anular). Asumiendo INSCRITO.")
-            return -2 # Código para 'INSCRITO'
+            return -2
 
-
-        # 2. BÚSQUEDA POR CONTEO DE PLAZAS
-        # --------------------------------
-
-        # A. Regex: "N plazas vacantes" (Prioritaria)
+        # Búsqueda de plazas
         match_exact = re.search(r'(\d+)\s*plazas?\s*vacantes?', clean_text, re.IGNORECASE)
         if match_exact:
             spots = int(match_exact.group(1))
             log(f"   🎉 ¡Plazas encontradas (Específica 'vacantes'): {spots}!")
             return spots
             
-        # B. Regex: "Quedan N plazas"
         match_quedan = re.search(r'(?:quedan|disponibles|libres):\s*(\d+)', clean_text, re.IGNORECASE)
         if match_quedan:
             spots = int(match_quedan.group(1))
             log(f"   🎉 ¡Plazas encontradas (Quedan/Disponibles): {spots}!")
             return spots
 
-        # C. (FALLBACK y Ajuste para 54) Buscamos números seguidos por 'plazas'
         match_fallback = re.search(r'(\d+)\s*plazas', clean_text, re.IGNORECASE)
         if match_fallback:
              spots = int(match_fallback.group(1))
-             
-             # **AJUSTE CRÍTICO:** Subimos el límite para permitir 54 plazas.
              if spots < 100: 
                  log(f"   ⚠️ ¡Plazas encontradas (Fallback/Baja confianza): {spots}! (Límite: 100)")
                  return spots
@@ -839,25 +798,22 @@ class ActivityFinder:
         log("   ⚠️ No se detectó un número de plazas válido en este contenedor.")
         return -1
 
+
 # ===============================
-# FUNCIÓN PRINCIPAL
+# FUNCIÓN PRINCIPAL DEL BOT
 # ===============================
 def run_bot(headless=False):
-    """Ejecuta el bot y retorna número de plazas. Acepta headless para monitorización."""
+    """Ejecuta el bot y retorna número de plazas"""
     log("🚀 Iniciando bot...")
     log(f"🎯 Objetivo: {ACTIVITY_NAME} {ACTIVITY_HOUR} ({TARGET_DAY} {TARGET_MONTH})")
     
     with sync_playwright() as p:
-        # Pasa el argumento 'headless'
         browser = p.chromium.launch(headless=headless) 
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
         
         try:
-            # --- SECCIÓN MODIFICADA ---
             if SessionManager.restore_session(page):
-                # 1. Si la restauración se hizo (logueado = True en restore_session):
-                #    Aseguramos que la URL sea la de PLANNING y el estado sea 'networkidle'.
                 page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
                 page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
 
@@ -870,11 +826,9 @@ def run_bot(headless=False):
                         return -1
             
             else:
-                # 2. Si restore_session devolvió False (no existe archivo o fallo la navegacion inicial):
                 if not SessionManager.perform_login(page, context):
                     log("❌ Fallo de autenticación")
                     return -1
-            # --- FIN SECCIÓN MODIFICADA ---
             
             page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
             page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
@@ -901,14 +855,152 @@ def run_bot(headless=False):
             browser.close()
             log("👋 Bot finalizado")
 
+
 # ===============================
-# EJECUCIÓN
+# API FLASK PARA SERVICIO WEB
+# ===============================
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return jsonify({
+        "status": "online",
+        "service": "Enjoy Bot Server",
+        "endpoints": ["/buscar", "/monitor", "/health"],
+        "usage": "GET /buscar?actividad=ZUMBA&hora=18:30&dia=15&mes=noviembre"
+    })
+
+@app.route('/buscar', methods=['GET', 'POST'])
+def buscar_actividad():
+    """Endpoint para búsqueda desde AppInventor"""
+    try:
+        if request.method == 'GET':
+            actividad = request.args.get('actividad', '')
+            hora = request.args.get('hora', '')
+            dia = request.args.get('dia', '')
+            mes = request.args.get('mes', '')
+        else:
+            data = request.get_json() or request.form
+            actividad = data.get('actividad', '')
+            hora = data.get('hora', '')
+            dia = data.get('dia', '')
+            mes = data.get('mes', '')
+
+        if not all([actividad, hora, dia, mes]):
+            return jsonify({
+                "estado": "error",
+                "mensaje": "Faltan parámetros. Usa: actividad, hora, dia, mes"
+            })
+
+        global ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH
+        ACTIVITY_NAME = actividad.upper()
+        ACTIVITY_HOUR = hora
+        TARGET_DAY = dia
+        TARGET_MONTH = mes.lower()
+
+        log(f"🔍 Búsqueda desde API: {ACTIVITY_NAME} {ACTIVITY_HOUR} {TARGET_DAY}/{TARGET_MONTH}")
+
+        plazas = run_bot(headless=True)
+
+        if plazas > 0:
+            return jsonify({
+                "estado": "éxito",
+                "plazas": plazas,
+                "mensaje": f"✅ {plazas} plazas disponibles para {ACTIVITY_NAME} a las {ACTIVITY_HOUR}"
+            })
+        elif plazas == 0:
+            return jsonify({
+                "estado": "completo",
+                "plazas": 0,
+                "mensaje": "⚠️ Actividad COMPLETA (0 plazas)"
+            })
+        elif plazas == -2:
+            return jsonify({
+                "estado": "inscrito",
+                "mensaje": "🥳 Ya estás inscrito en esta actividad"
+            })
+        else:
+            return jsonify({
+                "estado": "error",
+                "mensaje": "✗ No se encontró la actividad. Verifica la fecha/hora."
+            })
+
+    except Exception as e:
+        log(f"💥 Error en endpoint /buscar: {e}")
+        return jsonify({
+            "estado": "error",
+            "mensaje": f"Error interno: {str(e)}"
+        })
+
+@app.route('/monitor', methods=['POST'])
+def iniciar_monitor():
+    """Inicia monitorización continua"""
+    try:
+        data = request.get_json() or request.form
+        actividad = data.get('actividad', '')
+        hora = data.get('hora', '')
+        dia = data.get('dia', '')
+        mes = data.get('mes', '')
+
+        if not all([actividad, hora, dia, mes]):
+            return jsonify({
+                "estado": "error",
+                "mensaje": "Faltan parámetros para monitorización"
+            })
+
+        import threading
+        thread = threading.Thread(
+            target=run_monitor,
+            args=(actividad.upper(), hora, dia, mes.lower())
+        )
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
+            "estado": "éxito",
+            "mensaje": f"Monitorización iniciada para {actividad} {hora}"
+        })
+
+    except Exception as e:
+        return jsonify({
+            "estado": "error",
+            "mensaje": f"Error al iniciar monitor: {str(e)}"
+        })
+
+@app.route('/health')
+def health_check():
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "gui_available": GUI_AVAILABLE
+    })
+
+
+# ===============================
+# EJECUCIÓN PRINCIPAL
 # ===============================
 if __name__ == "__main__":
     if GUI_AVAILABLE:
-        # Se ejecuta solo si Tkinter se pudo importar (entorno de escritorio)
-        app = EnjoyForm()
-        app.run()
+        # Modo escritorio con interfaz gráfica
+        print("🚀 Iniciando aplicación de escritorio...")
+        app_gui = EnjoyForm()
+        app_gui.run()
     else:
-        # Se omite la ejecución de la GUI en el servidor headless
-        log("🚫 Ejecución directa omitida en modo headless.")
+        # Modo servidor web (Render)
+        print("🌐 Iniciando servidor web Flask...")
+        print(f"🔧 GUI disponible: {GUI_AVAILABLE}")
+        print(f"📡 Endpoints disponibles:")
+        print(f"   • /buscar?actividad=ZUMBA&hora=18:30&dia=15&mes=noviembre")
+        print(f"   • /health")
+        print(f"   • /monitor (POST)")
+        
+        # Verificar credenciales básicas
+        if not USERNAME or not PASSWORD:
+            print("⚠️ ADVERTENCIA: Credenciales no configuradas. Usa variables de entorno:")
+            print("   ENJOY_USERNAME, ENJOY_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID")
+        
+        # Ejecutar Flask
+        port = int(os.environ.get('PORT', 5000))
+        app.run(host='0.0.0.0', port=port, debug=False)
