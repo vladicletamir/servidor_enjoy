@@ -655,6 +655,7 @@ class DateNavigator:
                         if btn.is_visible() and btn.is_enabled():
                             btn.click(timeout=TIMEOUT_CONFIG['element'])
                             page.wait_for_timeout(TIMEOUT_CONFIG['short_wait'])
+                            page.wait_for_timeout(5000)
                             clicked = True
                             break
                 except Exception: continue
@@ -849,15 +850,15 @@ def run_bot(headless=False):
     
     with sync_playwright() as p:
         # Pasa el argumento 'headless'
-        browser = p.chromium.launch(headless=headless,# 1. FORZAR VIEWPORT A UN TAMAÑO ESTÁNDAR DE ESCRITORIO
-    # Esto soluciona problemas de layout en modo headless
-    viewport={'width': 1920, 'height': 1080},
-    # 2. IGNORAR POSIBLES ERRORES DE CERTIFICADO EN EL SERVIDOR
-    # A veces la red del servidor remoto da problemas con certificados
-    ignore_https_errors=True
+        browser = p.chromium.launch(headless=headless# FORZAMOS UN TAMAÑO DE PANTALLA DE ESCRITORIO
+            args=[f'--window-size=1920,1080'], 
+            # AÑADIMOS ESTO COMO ÚLTIMA MEDIDA
+            ignore_https_errors=True
 ) 
-        context = browser.new_context(viewport={"width": 1920, "height": 1080})
-        page = context.new_page()
+        page = browser.new_page(viewport={'width': 1920, 'height': 1080}) 
+        context = browser.contexts[0] # Obtener el contexto creado
+
+        
         
         try:
             # --- SECCIÓN MODIFICADA ---
@@ -919,6 +920,7 @@ if __name__ == "__main__":
     else:
         # Se omite la ejecución de la GUI en el servidor headless
         log("🚫 Ejecución directa omitida en modo headless.")
+
 
 
 
