@@ -736,7 +736,20 @@ class ActivityFinder:
             count = candidates.count()
             log(f"   🔎 Elementos con el nombre encontrados: {count}")
             
-            if count == 0: return -1
+            if count == 0:
+                # --- CÓDIGO NUEVO DE DEPURACIÓN (EL CHIVATO) ---
+                log("⚠️ NO ENCUENTRO LA ACTIVIDAD. ¿Qué estoy viendo?")
+                try:
+                    # Imprimir el texto visible del cuerpo de la página para ver si cargó
+                    texto_visible = frame.locator("body").inner_text()
+                    # Limpiamos saltos de línea excesivos para leerlo mejor
+                    texto_limpio = " ".join(texto_visible.split())
+                    log(f"👀 VEO ESTO EN LA PANTALLA (Primeros 1000 caracteres):\n{texto_limpio[:1000]}")
+                except Exception as e:
+                    log(f"No pude leer el texto de la pantalla: {e}")
+                # -----------------------------------------------
+                
+                return -1
 
             for i in range(count):
                 element = candidates.nth(i)
@@ -926,6 +939,7 @@ if __name__ == "__main__":
     else:
         # Se omite la ejecución de la GUI en el servidor headless
         log("🚫 Ejecución directa omitida en modo headless.")
+
 
 
 
