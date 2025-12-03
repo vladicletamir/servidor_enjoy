@@ -850,13 +850,16 @@ def run_bot(headless=False):
     
     with sync_playwright() as p:
         # Pasa el argumento 'headless'
-        browser = p.chromium.launch(headless=headless# FORZAMOS UN TAMAÑO DE PANTALLA DE ESCRITORIO
-            args=[f'--window-size=1920,1080'], 
-            # AÑADIMOS ESTO COMO ÚLTIMA MEDIDA
+        browser = p.chromium.launch(
+            headless=headless,
+            # Añadimos ignore_https_errors aquí
             ignore_https_errors=True
-) 
-        page = browser.new_page(viewport={'width': 1920, 'height': 1080}) 
-        context = browser.contexts[0] # Obtener el contexto creado
+        ) 
+        
+        # El viewport se define en new_page/new_context
+        # Establecemos un viewport de escritorio de 1920x1080
+        context = browser.new_context(viewport={"width": 1920, "height": 1080}) 
+        page = context.new_page()
 
         
         
@@ -920,6 +923,7 @@ if __name__ == "__main__":
     else:
         # Se omite la ejecución de la GUI en el servidor headless
         log("🚫 Ejecución directa omitida en modo headless.")
+
 
 
 
