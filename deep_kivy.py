@@ -853,15 +853,17 @@ def run_bot(headless=False):
         # Pasa el argumento 'headless'
         browser = p.chromium.launch(
             headless=headless,
-            # Añadimos ignore_https_errors aquí
-            ignore_https_errors=True
+            args=["--window-size=1920,1080"] 
+            # ¡AQUÍ NO PONGAS NADA MÁS!
         ) 
         
-        # El viewport se define en new_page/new_context
-        # Establecemos un viewport de escritorio de 1920x1080
-        context = browser.new_context(viewport={"width": 1920, "height": 1080}) 
+        # 2. CONTEXTO: Aquí van viewport e ignore_https_errors
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080}, # Tamaño de pantalla
+            ignore_https_errors=True                  # Ignorar errores SSL
+        ) 
+        
         page = context.new_page()
-
         
         
         try:
@@ -924,6 +926,7 @@ if __name__ == "__main__":
     else:
         # Se omite la ejecución de la GUI en el servidor headless
         log("🚫 Ejecución directa omitida en modo headless.")
+
 
 
 
