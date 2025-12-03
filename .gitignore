@@ -1,7 +1,7 @@
+.env
+enjoy_state.json
+screenshots/
 __pycache__/
 *.pyc
-*.log
-screenshots/
-.env
-venv/
-*.db
+.DS_Store
+.vscode/
