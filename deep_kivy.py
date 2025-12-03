@@ -78,10 +78,10 @@ PASSWORD = "Kerkrade1126" # <--- VERIFICAR
 
 # Configuración de timeouts (ms)
 TIMEOUT_CONFIG = {
-    'navigation': 45000, # Antes 30000
-    'element': 15000,    # Antes 10000
-    'short_wait': 10000,  # Antes 2000
-    'long_wait': 10000    # Antes 5000
+    'navigation': 30000,
+    'element': 10000,
+    'short_wait': 2000,
+    'long_wait': 5000
 }
 
 # --- CONFIGURACIÓN DE TELEGRAM ---
@@ -552,7 +552,6 @@ class DateNavigator:
                 if DateNavigator._click_day_directly(page):
                     log("✅ Click directo en día exitoso")
                     page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
-                    time.sleep(4)
                     if DateNavigator._verify_activities_loaded(page):
                         log("🎉 Fecha seleccionada y actividades cargadas")
                         return True
@@ -600,13 +599,13 @@ class DateNavigator:
                         if elem.is_visible() and elem.is_enabled():
                             log(f"   📌 Elemento encontrado: '{elem.text_content().strip()}'")
                             try:
-                                with page.expect_navigation(timeout=10000, wait_until="domcontentloaded"):
+                                with page.expect_navigation(timeout=3000, wait_until="domcontentloaded"):
                                     elem.click()
                                 log(f"   ✅ Click exitoso con navegación ({tipo})")
                             except:
                                 elem.click()
                                 log(f"   ✅ Click exitoso sin navegación ({tipo})")
-                            page.wait_for_timeout(10000)
+                            page.wait_for_timeout(3000)
                             return True
                     except Exception: continue
             except Exception as e:
@@ -624,7 +623,7 @@ class DateNavigator:
                     const html = document.body.innerHTML.toLowerCase();
                     return html.includes('actividad') || html.includes('plaza');
                 }""",
-                timeout=10000
+                timeout=5000
             )
             return True
         except: return False
@@ -656,7 +655,6 @@ class DateNavigator:
                         if btn.is_visible() and btn.is_enabled():
                             btn.click(timeout=TIMEOUT_CONFIG['element'])
                             page.wait_for_timeout(TIMEOUT_CONFIG['short_wait'])
-                            page.wait_for_timeout(5000)
                             clicked = True
                             break
                 except Exception: continue
@@ -736,20 +734,7 @@ class ActivityFinder:
             count = candidates.count()
             log(f"   🔎 Elementos con el nombre encontrados: {count}")
             
-            if count == 0:
-                # --- CÓDIGO NUEVO DE DEPURACIÓN (EL CHIVATO) ---
-                log("⚠️ NO ENCUENTRO LA ACTIVIDAD. ¿Qué estoy viendo?")
-                try:
-                    # Imprimir el texto visible del cuerpo de la página para ver si cargó
-                    texto_visible = frame.locator("body").inner_text()
-                    # Limpiamos saltos de línea excesivos para leerlo mejor
-                    texto_limpio = " ".join(texto_visible.split())
-                    log(f"👀 VEO ESTO EN LA PANTALLA (Primeros 1000 caracteres):\n{texto_limpio[:1000]}")
-                except Exception as e:
-                    log(f"No pude leer el texto de la pantalla: {e}")
-                # -----------------------------------------------
-                
-                return -1
+            if count == 0: return -1
 
             for i in range(count):
                 element = candidates.nth(i)
@@ -864,20 +849,9 @@ def run_bot(headless=False):
     
     with sync_playwright() as p:
         # Pasa el argumento 'headless'
-        browser = p.chromium.launch(
-            headless=headless,
-            args=["--window-size=1920,1080"] 
-            # ¡AQUÍ NO PONGAS NADA MÁS!
-        ) 
-        
-        # 2. CONTEXTO: Aquí van viewport e ignore_https_errors
-        context = browser.new_context(
-            viewport={"width": 1920, "height": 1080}, # Tamaño de pantalla
-            ignore_https_errors=True                  # Ignorar errores SSL
-        ) 
-        
+        browser = p.chromium.launch(headless=headless) 
+        context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
-        
         
         try:
             # --- SECCIÓN MODIFICADA ---
@@ -921,7 +895,6 @@ def run_bot(headless=False):
         except Exception as e:
             log(f"💥 Error crítico: {e}")
             screenshot(page, "error_critico")
-            screenshot(page, "error_critico_busqueda")
             return -1
         
         finally:
@@ -939,11 +912,3 @@ if __name__ == "__main__":
     else:
         # Se omite la ejecución de la GUI en el servidor headless
         log("🚫 Ejecución directa omitida en modo headless.")
-
-
-
-
-
-
-
-
