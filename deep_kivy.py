@@ -849,8 +849,14 @@ def run_bot(headless=False):
     
     with sync_playwright() as p:
         # Pasa el argumento 'headless'
-        browser = p.chromium.launch(headless=headless) 
-        context = browser.new_context(viewport={"width": 1280, "height": 900})
+        browser = p.chromium.launch(headless=headless,# 1. FORZAR VIEWPORT A UN TAMAÑO ESTÁNDAR DE ESCRITORIO
+    # Esto soluciona problemas de layout en modo headless
+    viewport={'width': 1920, 'height': 1080},
+    # 2. IGNORAR POSIBLES ERRORES DE CERTIFICADO EN EL SERVIDOR
+    # A veces la red del servidor remoto da problemas con certificados
+    ignore_https_errors=True
+) 
+        context = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = context.new_page()
         
         try:
@@ -913,5 +919,6 @@ if __name__ == "__main__":
     else:
         # Se omite la ejecución de la GUI en el servidor headless
         log("🚫 Ejecución directa omitida en modo headless.")
+
 
 
