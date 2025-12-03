@@ -78,10 +78,10 @@ PASSWORD = "Kerkrade1126" # <--- VERIFICAR
 
 # Configuración de timeouts (ms)
 TIMEOUT_CONFIG = {
-    'navigation': 30000,
-    'element': 10000,
-    'short_wait': 2000,
-    'long_wait': 5000
+    'navigation': 45000, # Antes 30000
+    'element': 15000,    # Antes 10000
+    'short_wait': 5000,  # Antes 2000
+    'long_wait': 10000    # Antes 5000
 }
 
 # --- CONFIGURACIÓN DE TELEGRAM ---
@@ -895,6 +895,7 @@ def run_bot(headless=False):
         except Exception as e:
             log(f"💥 Error crítico: {e}")
             screenshot(page, "error_critico")
+            screenshot(page, "error_critico_busqueda")
             return -1
         
         finally:
@@ -912,3 +913,4 @@ if __name__ == "__main__":
     else:
         # Se omite la ejecución de la GUI en el servidor headless
         log("🚫 Ejecución directa omitida en modo headless.")
+
