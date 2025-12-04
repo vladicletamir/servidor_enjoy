@@ -1,28 +1,60 @@
-# CAMBIO: En lugar de :latest, usa la etiqueta específica de la versión 1.40.0
-FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+FROM python:3.9-slim
+
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libgcc1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    lsb-release \
+    xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# Copiar requirements e instalar Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Instalar Playwright y Chromium
+RUN python -m playwright install chromium
 
-
-CMD gunicorn servidor_enjoy:app --workers 4 --bind 0.0.0.0:$PORT
-
-
-
-
-# Establece el directorio de trabajo
-WORKDIR /app
-
-# 2. Copia el archivo de requerimientos e instala SOLO las dependencias de Python
-# Playwright ya está instalado en la imagen base.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# 3. Copia el resto de los archivos del proyecto (incluyendo tus .py)
+# Copiar código
 COPY . .
 
-# 4. Comando para iniciar la aplicación (Asumimos gunicorn)
-CMD gunicorn servidor_enjoy:app --workers 4 --bind 0.0.0.0:$PORT
+# Exponer puerto
+EXPOSE 5000
+
+# Ejecutar aplicación
+CMD ["python", "deep_kivy.py"]
