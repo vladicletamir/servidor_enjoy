@@ -1,6 +1,6 @@
 FROM python:3.9-slim
 
-# Instalar dependencias del sistema
+# 1. Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -39,22 +39,31 @@ RUN apt-get update && apt-get install -y \
     libxtst6 \
     lsb-release \
     xdg-utils \
+    libnss3-dev \
+    libgdk-pixbuf2.0-0 \
+    libxss1 \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copiar requirements e instalar Python
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Instalar dependencias incluyendo gunicorn
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Instalar Playwright y Chromium
 RUN python -m playwright install chromium
 
-# Copiar código
+# Verificar instalación
+RUN python -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); browser = p.chromium.launch(headless=True); print('✅ Chromium instalado'); browser.close()"
+
 COPY . .
 
-# Exponer puerto
+RUN mkdir -p screenshots
+
 EXPOSE 5000
 
-# Ejecutar aplicación
-CMD ["python", "deep_kivy.py"]
+# USAR ESTE CMD (con gunicorn)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "deep_kivy:app"]
