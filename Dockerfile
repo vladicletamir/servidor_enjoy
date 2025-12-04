@@ -66,4 +66,5 @@ RUN mkdir -p screenshots
 EXPOSE 5000
 
 # USAR ESTE CMD (con gunicorn)
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "deep_kivy:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "deep_kivy:app"]
+
