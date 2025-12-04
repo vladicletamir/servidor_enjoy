@@ -701,7 +701,7 @@ class ActivityFinder:
             return True
         except: return False
 
-       @staticmethod
+    @staticmethod
     def find_activity(frame):
         """Busca la actividad - VERSIÓN MEJORADA"""
         global ACTIVITY_NAME, ACTIVITY_HOUR
@@ -1015,6 +1015,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
