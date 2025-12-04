@@ -872,6 +872,7 @@ def index():
         "usage": "GET /buscar?actividad=ZUMBA&hora=18:30&dia=15&mes=noviembre"
     })
 
+
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar_actividad():
     """Endpoint para búsqueda desde AppInventor"""
@@ -981,7 +982,7 @@ def health_check():
 # ===============================
 # EJECUCIÓN PRINCIPAL
 # ===============================
-if __name__ == "__main__":
+def main():
     if GUI_AVAILABLE:
         # Modo escritorio con interfaz gráfica
         print("🚀 Iniciando aplicación de escritorio...")
@@ -1004,3 +1005,7 @@ if __name__ == "__main__":
         # Ejecutar Flask
         port = int(os.environ.get('PORT', 5000))
         app.run(host='0.0.0.0', port=port, debug=False)
+
+# Solo ejecutar main si el script es ejecutado directamente, no importado.
+if __name__ == "__main__":
+    main()
