@@ -518,7 +518,7 @@ class SessionManager:
 # GESTIÓN DE FECHAS
 # ===============================
 class DateNavigator:
-       @staticmethod
+    @staticmethod
     def ensure_date_selected(page, max_retries=3):
         """Garantiza que la fecha objetivo esté seleccionada"""
         log(f"🎯 DEBUG Fecha objetivo: {TARGET_DAY} de {TARGET_MONTH}")
@@ -1015,5 +1015,6 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
