@@ -520,6 +520,16 @@ class SessionManager:
 class DateNavigator:
     @staticmethod
     def ensure_date_selected(page, max_retries=3):
+         """Garantiza que la fecha objetivo esté seleccionada"""
+        log(f"🎯 DEBUG Fecha objetivo: {TARGET_DAY} de {TARGET_MONTH}")
+        
+        # Tomar screenshot y mostrar HTML
+        try:
+            html = page.content()[:500]
+            log(f"📄 DEBUG HTML inicio: {html}")
+        except:
+            pass
+        
         """Garantiza que la fecha objetivo esté seleccionada"""
         log(f"🎯 Seleccionando fecha: {TARGET_DAY} de {TARGET_MONTH}")
         screenshot(page, "antes_seleccion_fecha")
@@ -701,103 +711,109 @@ class ActivityFinder:
             return True
         except: return False
 
-    @staticmethod
+            @staticmethod
     def find_activity(frame):
-        """Busca la actividad usando filtros de contenido"""
+        """Busca la actividad - VERSIÓN MEJORADA"""
         global ACTIVITY_NAME, ACTIVITY_HOUR
         
-        activity_regex = f"/{re.escape(ACTIVITY_NAME)}/i"
+        log(f"🎯 BÚSQUEDA MEJORADA: '{ACTIVITY_NAME}' a las '{ACTIVITY_HOUR}'")
         
-        log(f"🎯 Buscando tarjeta con: '{ACTIVITY_NAME}' (Regex: {activity_regex}) Y '{ACTIVITY_HOUR}'")
+        # Obtener todo el texto de la página para debug
+        all_text = frame.text_content()
+        log(f"📄 Texto total disponible ({len(all_text)} chars)")
+        log(f"📄 Muestra: '{all_text[:200]}...'")
         
-        try:
-            candidates = frame.locator(f"text={activity_regex}")
-            count = candidates.count()
-            log(f"   🔎 Elementos con el nombre encontrados: {count}")
-            
-            if count == 0: return -1
-
-            for i in range(count):
-                element = candidates.nth(i)
-                parent = element
+        # Buscar todas las tarjetas/containers de actividades
+        selectors = [
+            "div", "article", "li", "section", 
+            "[class*='activity']", "[class*='card']",
+            "[class*='event']", "[class*='class']"
+        ]
+        
+        for selector in selectors:
+            try:
+                elements = frame.locator(selector).all()
+                log(f"🔍 Selector '{selector}': {len(elements)} elementos")
                 
-                for level in range(7): 
+                for i, element in enumerate(elements[:10]):  # Limitar a 10 para debug
                     try:
-                        text = parent.text_content()
+                        text = element.text_content()
                         clean_text = " ".join(text.split()).upper()
                         
-                        hour_check = ACTIVITY_HOUR.replace(':00', '')
+                        # Verificar si contiene actividad Y hora
+                        activity_match = ACTIVITY_NAME.upper() in clean_text
+                        hour_match = ACTIVITY_HOUR in clean_text or ACTIVITY_HOUR.lstrip('0') in clean_text
                         
-                        if ACTIVITY_HOUR in clean_text or hour_check in clean_text:
-                            log(f"   ✅ ¡Coincidencia de HORA encontrada en contenedor (Nivel {level})!")
-                            log(f"   📄 Texto contenedor analizado: {clean_text[:100]}...")
+                        if activity_match and hour_match:
+                            log(f"✅ ¡COINCIDENCIA ENCONTRADA! Elemento {i} con selector '{selector}'")
+                            log(f"📄 Contenido: '{clean_text[:150]}...'")
                             
-                            plazas = ActivityFinder._extract_spots(parent)
-                            
-                            if plazas != -1: 
+                            plazas = ActivityFinder._extract_spots(element)
+                            if plazas != -1:
                                 return plazas
-                            else:
-                                log("   ⚠️ Hora y Actividad coinciden, pero no se extrajeron plazas válidas.")
+                                
+                    except Exception as e:
+                        continue
                         
-                        parent = parent.locator("..")
-                    
-                    except Exception: break
-
-        except Exception as e:
-            log(f"⚠️ Error en búsqueda: {e}")
-
-        log("❌ No se encontró la combinación Actividad + Hora + Plazas en un contenedor válido")
+            except Exception as e:
+                continue
+        
+        log("❌ No se encontró ninguna coincidencia con los selectores básicos")
+        
+        # Último intento: buscar por texto directo
+        log("🔄 Intentando búsqueda por texto directo...")
+        try:
+            # Buscar elemento que contenga tanto la actividad como la hora
+            search_text = f"{ACTIVITY_NAME}.*{ACTIVITY_HOUR}"
+            elements = frame.locator(f"text=/{search_text}/i").all()
+            
+            for element in elements:
+                log(f"📌 Elemento encontrado por texto: '{element.text_content()[:100]}...'")
+                plazas = ActivityFinder._extract_spots(element)
+                if plazas != -1:
+                    return plazas
+        except:
+            pass
+            
         return -1
-    
-    @staticmethod
     def _extract_spots(element):
         """Extrae plazas, maneja COMPLETO, INSCRITO"""
         text = element.text_content()
         clean_text = " ".join(text.split()) 
         
-        log(f"   🔢 Analizando plazas en: '{clean_text[:60]}...'")
-
-        # Buscar 'Anular' (si aparece 'Anular', el usuario está INSCRITO)
-        try:
-            if element.locator("button:has-text('Anular')").count() > 0 or \
-               element.locator("button:has-text('Cancelar')").count() > 0:
-                log("   ✅ DETECTADO BOTÓN 'Anular/Cancelar'. Usuario INSCRITO.")
-                return -2
-        except Exception: pass
+        log(f"   🔢 DEBUG Analizando plazas en texto: '{clean_text[:100]}...'")
         
-        # Buscamos 'COMPLETO' o 'Lista de Espera'
-        if "completo" in clean_text.lower() or "lista de espera" in clean_text.lower() or "no quedan plazas" in clean_text.lower():
-            log("   🔴 DETECTADO TEXTO 'COMPLETO' o 'Lista de Espera'.")
-            return 0
-
-        if "inscrito" in clean_text.lower() or "reservado" in clean_text.lower():
-            log("   ⚠️ DETECTADO TEXTO 'INSCRITO' (Sin botón Anular). Asumiendo INSCRITO.")
-            return -2
-
-        # Búsqueda de plazas
-        match_exact = re.search(r'(\d+)\s*plazas?\s*vacantes?', clean_text, re.IGNORECASE)
-        if match_exact:
-            spots = int(match_exact.group(1))
-            log(f"   🎉 ¡Plazas encontradas (Específica 'vacantes'): {spots}!")
-            return spots
-            
-        match_quedan = re.search(r'(?:quedan|disponibles|libres):\s*(\d+)', clean_text, re.IGNORECASE)
-        if match_quedan:
-            spots = int(match_quedan.group(1))
-            log(f"   🎉 ¡Plazas encontradas (Quedan/Disponibles): {spots}!")
-            return spots
-
-        match_fallback = re.search(r'(\d+)\s*plazas', clean_text, re.IGNORECASE)
-        if match_fallback:
-             spots = int(match_fallback.group(1))
-             if spots < 100: 
-                 log(f"   ⚠️ ¡Plazas encontradas (Fallback/Baja confianza): {spots}! (Límite: 100)")
-                 return spots
-             log("   ⚠️ Fallback ignorado (Número de plazas demasiado alto > 100).")
-
-        log("   ⚠️ No se detectó un número de plazas válido en este contenedor.")
+        # 1. Buscar número seguido de "plazas" (cualquier cosa después)
+        import re
+        
+        # Patrones más flexibles
+        patterns = [
+            r'(\d+)\s*plazas?\s*vacantes?',
+            r'(\d+)\s*plazas?\s*disponibles?',
+            r'(\d+)\s*plazas?\s*libres?',
+            r'quedan\s*(\d+)\s*plazas?',
+            r'disponibles\s*(\d+)\s*plazas?',
+            r'(\d+)\s*plazas?\s*restantes?',
+            r'(\d+)\s*plazas?',  # Último recurso
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, clean_text, re.IGNORECASE)
+            if match:
+                spots = int(match.group(1))
+                log(f"   🎉 DEBUG: Patrón '{pattern}' -> {spots} plazas")
+                return spots
+        
+        # 2. Si no encuentra plazas, buscar botón "INSCRIBIRSE"
+        try:
+            if element.locator("button:has-text('INSCRIBIRSE'), button:has-text('Inscribirse'), button:has-text('Reservar')").count() > 0:
+                log("   ✅ DEBUG: Botón 'INSCRIBIRSE' encontrado -> Hay plazas")
+                return 25  # O un número positivo cualquiera
+        except:
+            pass
+        
+        log("   ❌ DEBUG: No se detectó número de plazas ni botón de inscripción")
         return -1
-
 
 # ===============================
 # FUNCIÓN PRINCIPAL DEL BOT
@@ -1009,3 +1025,4 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
