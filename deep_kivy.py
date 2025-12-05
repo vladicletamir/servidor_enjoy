@@ -808,7 +808,80 @@ class ActivityFinder:
 # ===============================
 # FUNCIÓN PRINCIPAL DEL BOT
 # ===============================
+
 def run_bot(headless=False):
+    """Ejecuta el bot y retorna número de plazas"""
+    log("🚀 Iniciando bot...")
+    log(f"🎯 Objetivo: {ACTIVITY_NAME} {ACTIVITY_HOUR} ({TARGET_DAY} {TARGET_MONTH})")
+    
+    # DEBUG: Verificar credenciales (parcialmente)
+    log(f"🔑 Usuario configurado: {'SÍ' if USERNAME else 'NO'}")
+    log(f"🔑 Contraseña configurada: {'SÍ' if PASSWORD else 'NO'}")
+    
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless) 
+        context = browser.new_context(viewport={"width": 1280, "height": 900})
+        page = context.new_page()
+        
+        try:
+            # PASO 1: LOGIN O RESTAURAR
+            log("1. Intentando restaurar sesión o login...")
+            
+            if SessionManager.restore_session(page):
+                log("   ✅ Intento de restauración de sesión")
+                page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
+                page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
+                
+                current_url = page.url
+                log(f"   📍 URL después de restore: {current_url}")
+                
+                if SessionManager.is_logged_in(page):
+                    log("   ✅ ¡Sesión restaurada con éxito!")
+                else:
+                    log("   ❌ Restauración fallida, forzando login...")
+                    if not SessionManager.perform_login(page, context):
+                        log("   💥 Login fallido después de restore")
+                        return -1
+            else:
+                log("   🔄 No hay sesión guardada, haciendo login completo...")
+                if not SessionManager.perform_login(page, context):
+                    log("   💥 Login completo fallido")
+                    return -1
+            
+            # PASO 2: VERIFICAR QUE ESTAMOS EN PLANNING
+            log("2. Verificando ubicación...")
+            page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
+            page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
+            
+            current_url = page.url
+            log(f"   📍 URL actual: {current_url}")
+            
+            if "planning" not in current_url:
+                log(f"   ⚠️ No estamos en planning, estamos en: {current_url}")
+            
+            # PASO 3: DEBUG - Mostrar HTML actual
+            html = page.content()
+            log(f"   📄 Longitud HTML: {len(html)} caracteres")
+            
+            # Buscar evidencias inmediatas
+            if ACTIVITY_NAME.lower() in html.lower():
+                log(f"   ✅ ¡'{ACTIVITY_NAME}' DETECTADO EN HTML!")
+            else:
+                log(f"   ❌ '{ACTIVITY_NAME}' NO encontrado en HTML")
+            
+            if ACTIVITY_HOUR in html:
+                log(f"   ✅ Hora '{ACTIVITY_HOUR}' encontrada en HTML")
+            else:
+                # Buscar variantes de hora
+                hour_variants = [ACTIVITY_HOUR, ACTIVITY_HOUR.lstrip('0'), ACTIVITY_HOUR.replace(':00', '')]
+                found = False
+                for variant in hour_variants:
+                    if variant in html:
+                        log(f"   ✅ Hora '{variant}' (variante) encontrada")
+                        found = True
+                        break
+                if not found:
+                    log(f"   ❌ Hora '{ACTIVITY_HOUR}' NO encontrada (ni variantes)")
     """Ejecuta el bot y retorna número de plazas"""
     log("🚀 Iniciando bot...")
     log(f"🎯 Objetivo: {ACTIVITY_NAME} {ACTIVITY_HOUR} ({TARGET_DAY} {TARGET_MONTH})")
@@ -983,7 +1056,179 @@ def health_check():
         "timestamp": datetime.now().isoformat(),
         "gui_available": GUI_AVAILABLE
     })
+@app.route('/debug_html', methods=['GET'])
+def debug_html():
+    """Devuelve el HTML cruto que ve el bot (sin ejecutar toda la lógica)"""
+    from playwright.sync_api import sync_playwright
+    import time
+    
+    # Configurar parámetros
+    actividad = request.args.get('actividad', 'ZUMBA')
+    hora = request.args.get('hora', '10:00')
+    dia = request.args.get('dia', '6')
+    mes = request.args.get('mes', 'diciembre')
+    
+    logs = []
+    html_content = ""
+    
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(viewport={"width": 1280, "height": 900})
+            page = context.new_page()
+            
+            # 1. Login rápido
+            logs.append("🔐 1. Intentando login...")
+            page.goto("https://member.resamania.com/enjoy", wait_until="networkidle", timeout=30000)
+            time.sleep(2)
+            
+            # Verificar si ya está logueado
+            if "login" in page.url:
+                logs.append("❌ Parece que no está logueado")
+            else:
+                logs.append("✅ Ya estaba logueado o login automático funcionó")
+            
+            # 2. Ir a planning
+            logs.append("📅 2. Navegando a planning...")
+            page.goto("https://member.resamania.com/enjoy/planning", wait_until="networkidle", timeout=30000)
+            time.sleep(3)
+            
+            # 3. Obtener HTML actual
+            html_content = page.content()
+            logs.append(f"📄 3. HTML obtenido: {len(html_content)} caracteres")
+            
+            # 4. Buscar evidencias
+            if actividad.upper() in html_content.upper():
+                logs.append(f"✅ ACTIVIDAD '{actividad}' ENCONTRADA en HTML")
+            else:
+                logs.append(f"❌ ACTIVIDAD '{actividad}' NO encontrada en HTML")
+            
+            if hora in html_content:
+                logs.append(f"✅ HORA '{hora}' ENCONTRADA en HTML")
+            else:
+                logs.append(f"❌ HORA '{hora}' NO encontrada en HTML")
+            
+            if mes.lower() in html_content.lower():
+                logs.append(f"✅ MES '{mes}' ENCONTRADO en HTML")
+            else:
+                logs.append(f"❌ MES '{mes}' NO encontrado en HTML")
+            
+            if dia in html_content:
+                logs.append(f"✅ DÍA '{dia}' ENCONTRADO en HTML")
+            else:
+                logs.append(f"❌ DÍA '{dia}' NO encontrado en HTML")
+            
+            browser.close()
+            
+    except Exception as e:
+        logs.append(f"💥 ERROR: {str(e)}")
+    
+    # Devolver HTML y logs
+    return jsonify({
+        "logs": logs,
+        "html_length": len(html_content),
+        "contains_activity": actividad.upper() in html_content.upper(),
+        "contains_hour": hora in html_content,
+        "html_preview": html_content[:2000] + "..." if len(html_content) > 2000 else html_content
+    })
 
+@app.route('/debug_login', methods=['GET'])
+def debug_login():
+    """Solo verifica si el login funciona"""
+    from playwright.sync_api import sync_playwright
+    import time
+    
+    logs = []
+    
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            
+            logs.append("1. Navegando a enjoy...")
+            page.goto("https://member.resamania.com/enjoy", wait_until="domcontentloaded", timeout=15000)
+            time.sleep(2)
+            
+            current_url = page.url
+            logs.append(f"2. URL actual: {current_url}")
+            
+            # Verificar estado
+            if "login" in current_url:
+                logs.append("❌ Estamos en página de login - NO logueado")
+                page.screenshot(path="debug_not_logged.png")
+            elif "planning" in current_url or "member" in current_url:
+                logs.append("✅ ¡Parece que YA ESTÁ LOGEADO!")
+                page.screenshot(path="debug_logged.png")
+            else:
+                logs.append(f"⚠️ Estado desconocido - URL: {current_url}")
+            
+            # Tomar contenido
+            html = page.content()[:500]
+            logs.append(f"3. Primeros 500 chars del HTML: {html}")
+            
+            browser.close()
+            
+            return jsonify({
+                "success": "planning" in current_url or "member" in current_url,
+                "url": current_url,
+                "logs": logs
+            })
+            
+    except Exception as e:
+        return jsonify({"error": str(e), "logs": logs})
+
+@app.route('/debug_screenshot', methods=['GET'])
+def debug_screenshot():
+    """Describe lo que vería en un screenshot"""
+    from playwright.sync_api import sync_playwright
+    import base64
+    
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            
+            # Ir directo a planning (asumiendo cookies funcionan)
+            page.goto("https://member.resamania.com/enjoy/planning", timeout=30000)
+            page.wait_for_timeout(5000)
+            
+            # Verificar estado
+            current_url = page.url
+            page_title = page.title()
+            
+            # Obtener texto visible
+            visible_text = page.text_content()
+            
+            # Buscar día 5
+            try:
+                page.click("text=5", timeout=5000)
+                page.wait_for_timeout(3000)
+                clicked_day = True
+            except:
+                clicked_day = False
+            
+            # Analizar contenido
+            lines = visible_text.split('\n')
+            relevant_lines = []
+            for line in lines:
+                line_clean = line.strip()
+                if line_clean and len(line_clean) > 10:
+                    if 'AQUAGYM' in line_clean.upper() or 'ZUMBA' in line_clean.upper() or 'ACTIVIDAD' in line_clean.upper():
+                        relevant_lines.append(line_clean)
+            
+            browser.close()
+            
+            return jsonify({
+                "url": current_url,
+                "title": page_title,
+                "day_clicked": clicked_day,
+                "relevant_lines": relevant_lines[:10],  # Solo primeras 10
+                "total_lines": len(lines),
+                "status": "success"
+            })
+            
+    except Exception as e:
+        return jsonify({"error": str(e), "status": "failed"})
 
 # ===============================
 # EJECUCIÓN PRINCIPAL
@@ -1015,6 +1260,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
