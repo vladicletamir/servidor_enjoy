@@ -2,8 +2,8 @@ from playwright.sync_api import sync_playwright
 import os
 import time
 
-USERNAME = os.environ.get('ENJOY_USERNAME')
-PASSWORD = os.environ.get('ENJOY_PASSWORD')
+USERNAME = "anaurma@hotmail.com"
+PASSWORD = "Kerkrade1126"
 
 def test_simple():
     with sync_playwright() as p:
@@ -31,19 +31,19 @@ def test_simple():
             page.click("text=5")
             time.sleep(5)
             
-            # 4. Buscar AQUAGYM
-            print("4. Buscando AQUAGYM...")
+            # 4. Buscar ZUMBA
+            print("4. Buscando ZUMBA...")
             content = page.text_content()
             
-            if "AQUAGYM" in content.upper():
-                print("✅ ¡AQUAGYM ENCONTRADO!")
+            if "ZUMBA" in content.upper():
+                print("✅ ¡ZUMBA ENCONTRADO!")
                 # Buscar la línea exacta
                 lines = content.split('\n')
                 for line in lines:
-                    if "AQUAGYM" in line.upper():
+                    if "ZUMBA" in line.upper():
                         print(f"   Línea: {line}")
             else:
-                print("❌ AQUAGYM NO ENCONTRADO")
+                print("❌ ZUMBA NO ENCONTRADO")
                 
             # 5. Screenshot
             page.screenshot(path="test_result.png")
