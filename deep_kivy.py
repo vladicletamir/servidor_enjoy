@@ -882,49 +882,8 @@ def run_bot(headless=False):
                         break
                 if not found:
                     log(f"   ❌ Hora '{ACTIVITY_HOUR}' NO encontrada (ni variantes)")
-    """Ejecuta el bot y retorna número de plazas"""
-    log("🚀 Iniciando bot...")
-    log(f"🎯 Objetivo: {ACTIVITY_NAME} {ACTIVITY_HOUR} ({TARGET_DAY} {TARGET_MONTH})")
-    
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless) 
-        context = browser.new_context(viewport={"width": 1280, "height": 900})
-        page = context.new_page()
-        
-        try:
-            if SessionManager.restore_session(page):
-                page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
-                page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
-
-                if SessionManager.is_logged_in(page):
-                    log("✅ Sesión restaurada y verificada.")
-                else:
-                    log("⚠️ Sesión restaurada inválida. Forzando login completo.")
-                    if not SessionManager.perform_login(page, context):
-                        log("❌ Fallo de autenticación tras restauración")
-                        return -1
-            
-            else:
-                if not SessionManager.perform_login(page, context):
-                    log("❌ Fallo de autenticación")
-                    return -1
-            
-            page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
-            page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
-            
-            if not DateNavigator.ensure_date_selected(page):
-                log("❌ No se pudo seleccionar la fecha")
-                return -1
-            
-            frame = ActivityFinder.get_planning_frame(page)
-            ActivityFinder.wait_for_activities(frame)
-            ActivityFinder.scroll_page(page)
-            
-            plazas = ActivityFinder.find_activity(frame)
-            log(f"🎯 Resultado final: {plazas} plazas")
-            
-            return plazas
-            
+              
+                   
         except Exception as e:
             log(f"💥 Error crítico: {e}")
             screenshot(page, "error_critico")
@@ -1260,6 +1219,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
