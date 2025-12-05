@@ -1091,6 +1091,35 @@ def debug_html():
         "html_preview": html_content[:2000] + "..." if len(html_content) > 2000 else html_content
     })
 
+@app.route('/test_ultra_simple', methods=['GET'])
+def test_ultra_simple():
+    """Bot ultra simplificado - solo busca texto"""
+    from playwright.sync_api import sync_playwright
+    
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        
+        # 1. Ir directo (con suerte ya está logueado por cookies)
+        page.goto("https://member.resamania.com/enjoy/planning", timeout=30000)
+        
+        # 2. Esperar y tomar todo el texto
+        page.wait_for_timeout(5000)
+        all_text = page.text_content()
+        
+        # 3. Buscar
+        contains_aquagym = "AQUAGYM" in all_text.upper()
+        contains_5 = "5" in all_text
+        contains_diciembre = "diciembre" in all_text.lower()
+        
+        browser.close()
+        
+        return jsonify({
+            "aquagym_found": contains_aquagym,
+            "day_5_found": contains_5,
+            "december_found": contains_diciembre,
+            "text_sample": all_text[:500] + "..." if len(all_text) > 500 else all_text
+        })
 @app.route('/debug_login', methods=['GET'])
 def debug_login():
     """Solo verifica si el login funciona"""
@@ -1219,6 +1248,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
