@@ -910,6 +910,46 @@ def index():
         "usage": "GET /buscar?actividad=ZUMBA&hora=18:30&dia=15&mes=noviembre"
     })
 
+@app.route('/debug_planning_html', methods=['GET'])
+def debug_planning_html():
+    """Returns the HTML of the planning page after login for debugging"""
+    import traceback
+    from playwright.sync_api import sync_playwright
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(viewport={"width": 1280, "height": 900})
+            page = context.new_page()
+
+            # Use the existing session management
+            if SessionManager.restore_session(page):
+                page.goto(PLANNING_URL, wait_until="networkidle", timeout=30000)
+                page.wait_for_timeout(3000)
+                if SessionManager.is_logged_in(page):
+                    log("✅ Sesión restaurada")
+                else:
+                    log("❌ Sesión no válida, haciendo login...")
+                    if not SessionManager.perform_login(page, context):
+                        return jsonify({"error": "Login failed"})
+            else:
+                if not SessionManager.perform_login(page, context):
+                    return jsonify({"error": "Login failed"})
+
+            # Now we are on the planning page, get the HTML
+            html = page.content()
+            browser.close()
+
+            return jsonify({
+                "html": html,
+                "html_length": len(html)
+            })
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
 
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar_actividad():
@@ -1094,32 +1134,43 @@ def debug_html():
 @app.route('/test_ultra_simple', methods=['GET'])
 def test_ultra_simple():
     """Bot ultra simplificado - solo busca texto"""
+    import traceback
     from playwright.sync_api import sync_playwright
-    
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        
-        # 1. Ir directo (con suerte ya está logueado por cookies)
-        page.goto("https://member.resamania.com/enjoy/planning", timeout=30000)
-        
-        # 2. Esperar y tomar todo el texto
-        page.wait_for_timeout(5000)
-        all_text = page.text_content()
-        
-        # 3. Buscar
-        contains_aquagym = "AQUAGYM" in all_text.upper()
-        contains_5 = "5" in all_text
-        contains_diciembre = "diciembre" in all_text.lower()
-        
-        browser.close()
-        
+
+    try:
+        with sync_playwright() as p:
+            # Use chromium, and make sure to run in headless mode
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            # Set the navigation timeout to 30 seconds to match Render's timeout
+            page.goto("https://member.resamania.com/enjoy/planning", timeout=30000)
+            
+            # Wait for 3 seconds instead of 5
+            page.wait_for_timeout(3000)
+            all_text = page.text_content()
+            
+            # Close the browser
+            browser.close()
+            
+            # Search for strings
+            contains_aquagym = "AQUAGYM" in all_text.upper()
+            contains_5 = "5" in all_text
+            contains_diciembre = "diciembre" in all_text.lower()
+            
+            return jsonify({
+                "aquagym_found": contains_aquagym,
+                "day_5_found": contains_5,
+                "december_found": contains_diciembre,
+                "text_sample": all_text[:500] + "..." if len(all_text) > 500 else all_text
+            })
+    except Exception as e:
+        # Return the error message and traceback for debugging
         return jsonify({
-            "aquagym_found": contains_aquagym,
-            "day_5_found": contains_5,
-            "december_found": contains_diciembre,
-            "text_sample": all_text[:500] + "..." if len(all_text) > 500 else all_text
-        })
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
 @app.route('/debug_login', methods=['GET'])
 def debug_login():
     """Solo verifica si el login funciona"""
@@ -1248,6 +1299,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
