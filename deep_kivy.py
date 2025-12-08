@@ -822,7 +822,7 @@ def run_bot(headless=False):
         browser = p.chromium.launch(headless=headless) 
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
-        
+        args=["--no-sandbox", "--disable-dev-shm-usage"]
         try:
             # PASO 1: LOGIN O RESTAURAR
             log("1. Intentando restaurar sesión o login...")
@@ -1299,6 +1299,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
