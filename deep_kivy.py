@@ -874,21 +874,39 @@ def run_bot(headless=False):
             
            # ... después de la lógica de espera activa del PASO 2:
             
-            # 💡 PASO 3: SELECCIONAR FECHA
-            log("3. Seleccionando fecha objetivo...")
-            frame = ActivityFinder.get_planning_frame(page) # Obtener el frame principal
-            # Llama a la lógica robusta de navegación por fecha
+           # ---------------------------------------------------------
+            # CÓDIGO NUEVO A INSERTAR EN run_bot (Justo después de la espera)
+            # ---------------------------------------------------------
+            
+            # PASO 3: SELECCIONAR LA FECHA CORRECTA
+            log(f"3. Seleccionando fecha objetivo: {TARGET_DAY} de {TARGET_MONTH}...")
+            
+            # Detectamos si hay iframes (común en Resamania) o usamos la página principal
+            frame = ActivityFinder.get_planning_frame(page)
+            
+            # Ejecutamos la lógica que busca el día y hace clic
             DateNavigator.ensure_date_selected(frame)
             
-            # 💡 PASO 4: BUSCAR ACTIVIDAD
-            log("4. Buscando actividad...")
+            # Pequeña espera para que refresque la tabla tras el clic
+            page.wait_for_timeout(2000)
+
+            # PASO 4: BUSCAR LA ACTIVIDAD
+            log(f"4. Buscando actividad: {ACTIVITY_NAME}...")
             plazas = ActivityFinder.find_activity(frame)
             
-            # PASO 5: DEBUG FINAL (Opcional, pero útil)
-            html = page.content()
-            log(f"   📄 Longitud HTML final: {len(html)} caracteres")
-            
-            return plazas # <--- El resultado final de la búsqueda
+            # PASO 5: RESULTADO FINAL
+            if plazas != -1:
+                log(f"🎉 ¡Resultado encontrado! Plazas: {plazas}")
+            else:
+                log("❌ No se encontró la actividad tras navegar.")
+                # Opcional: Imprimir HTML si falla para depurar
+                # print(frame.content()[:1000]) 
+
+            return plazas
+
+            # ---------------------------------------------------------
+            # FIN DEL CÓDIGO NUEVO
+            # ---------------------------------------------------------
 
         except Exception as e:
             log(f"💥 Error crítico: {e}")
@@ -1314,6 +1332,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
