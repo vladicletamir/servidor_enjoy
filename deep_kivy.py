@@ -879,7 +879,7 @@ def run_bot(headless=False):
             # ---------------------------------------------------------
             
             # PASO 3: SELECCIONAR LA FECHA CORRECTA
-           log(f"3. Seleccionando fecha objetivo: {TARGET_DAY} de {TARGET_MONTH}...")
+            log(f"3. Seleccionando fecha objetivo: {TARGET_DAY} de {TARGET_MONTH}...")
             
             # Detectamos el frame principal (necesario en Resamania)
             frame = ActivityFinder.get_planning_frame(page)
@@ -1334,6 +1334,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
