@@ -819,12 +819,13 @@ def run_bot(headless=False):
     log(f"🔑 Contraseña configurada: {'SÍ' if PASSWORD else 'NO'}")
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=headless,
-            args=["--no-sandbox", "--disable-dev-shm-usage"]
-        ) 
-        context = browser.new_context(viewport={"width": 1280, "height": 900})
-        page = context.new_page()
+            browser = p.chromium.launch(
+                headless=headless,
+                # ✅ CORRECCIÓN: Los argumentos deben ir aquí
+                args=["--no-sandbox", "--disable-dev-shm-usage"] 
+            ) 
+            context = browser.new_context(viewport={"width": 1280, "height": 900})
+            page = context.new_page()
        
         try:
             # PASO 1: LOGIN O RESTAURAR
@@ -1302,6 +1303,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
