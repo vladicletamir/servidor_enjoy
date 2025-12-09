@@ -564,40 +564,29 @@ class DateNavigator:
         except Exception: pass
     
     @staticmethod
-    def _click_day_directly(page):
-        """Intenta hacer click directamente en el día sin navegar"""
-        log(f"🖱️ Buscando día {TARGET_DAY} para click directo...")
-        strategies = [
-            (f"button:has-text('{TARGET_DAY}')", "botón"),
-            (f"td:has-text('{TARGET_DAY}')", "celda tabla"),
-            (f"div[role='button']:has-text('{TARGET_DAY}')", "div clickeable"),
-            (f"[data-date*='-{TARGET_DAY.zfill(2)}']", "data-date"),
-            (f"a:has-text('{TARGET_DAY}')", "link"),
-        ]
+    def _click_day_directly(page, target_day):
+        log(f"   * Intentando hacer clic directo en el día '{target_day}'")
         
-        for selector, tipo in strategies:
-            try:
-                elements = page.locator(selector).all()
-                for elem in elements:
-                    try:
-                        if elem.is_visible() and elem.is_enabled():
-                            log(f"   📌 Elemento encontrado: '{elem.text_content().strip()}'")
-                            try:
-                                with page.expect_navigation(timeout=3000, wait_until="domcontentloaded"):
-                                    elem.click()
-                                log(f"   ✅ Click exitoso con navegación ({tipo})")
-                            except:
-                                elem.click()
-                                log(f"   ✅ Click exitoso sin navegación ({tipo})")
-                            page.wait_for_timeout(3000)
-                            return True
-                    except Exception: continue
-            except Exception as e:
-                log(f"   ⚠️ Error en estrategia '{tipo}': {e}")
-                continue
+        # 🚨 SELECTOR MEJORADO (BUSCA POR EL TEXTO DENTRO DE CUALQUIER BOTÓN/DIV)
+        # Esto ignora los cambios de clases CSS.
+        DAY_SELECTOR = f"//button[normalize-space(.)='{target_day}'] | //div[normalize-space(.)='{target_day}']"
         
-        log("   ❌ No se pudo hacer click directo")
-        return False
+        try:
+            # Esperar a que el selector esté visible
+            page.wait_for_selector(DAY_SELECTOR, timeout=10000)
+            
+            # Usar .click(force=True) para asegurar que el clic se realiza
+            page.locator(DAY_SELECTOR).click(force=True)
+            
+            log(f"   ✅ Día '{target_day}' clicado correctamente.")
+            return True
+            
+        except PlaywrightTimeoutError:
+            log(f"   ❌ El botón del día '{target_day}' no fue encontrado para hacer clic.")
+            return False
+        except Exception as e:
+            log(f"   💥 Error al hacer clic en el día: {e}")
+            return False
     
     @staticmethod
     def _verify_activities_loaded(page):
@@ -1334,6 +1323,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
