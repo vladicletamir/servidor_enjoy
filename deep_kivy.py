@@ -853,9 +853,20 @@ def run_bot(headless=False):
                     return -1
             
             # PASO 2: VERIFICAR QUE ESTAMOS EN PLANNING
-            log("2. Verificando ubicación...")
+            log("2. Verificando ubicación y esperando la planificación...")
             page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
-            page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
+            
+            # ✅ CORRECCIÓN CRÍTICA: Esperar a que un elemento de contenido real aparezca
+            try:
+                # Buscamos un selector genérico que indica que el contenido de la tabla ha cargado.
+                # El selector '[class*="Mui"]' es común en la web de Resamania (Material UI).
+                page.wait_for_selector("[class*='PlanningGrid-root'], [class*='MuiPaper-root'], [class*='planning']", 
+                                       timeout=15000) # Esperar hasta 15 segundos
+                log("   ✅ Contenido de planificación detectado.")
+            except PlaywrightTimeoutError:
+                log("   ⚠️ Falla: El contenido de planificación no apareció tras 15s. Continuamos...")
+            
+            page.wait_for_timeout(2000) # Espera de seguridad extra
             
             current_url = page.url
             log(f"   📍 URL actual: {current_url}")
@@ -929,7 +940,7 @@ def debug_planning_html():
             # Use the existing session management
             if SessionManager.restore_session(page):
                 page.goto(PLANNING_URL, wait_until="networkidle", timeout=30000)
-                page.wait_for_timeout(3000)
+                verificar(3000)
                 if SessionManager.is_logged_in(page):
                     log("✅ Sesión restaurada")
                 else:
@@ -1150,7 +1161,7 @@ def test_ultra_simple():
             page.goto("https://member.resamania.com/enjoy/planning", timeout=30000)
             
             # Wait for 3 seconds instead of 5
-            page.wait_for_timeout(3000)
+            verificar(3000)
             all_text = page.text_content()
             
             # Close the browser
@@ -1233,7 +1244,7 @@ def debug_screenshot():
             
             # Ir directo a planning (asumiendo cookies funcionan)
             page.goto("https://member.resamania.com/enjoy/planning", timeout=30000)
-            page.wait_for_timeout(5000)
+            verificar(5000)
             
             # Verificar estado
             current_url = page.url
@@ -1303,6 +1314,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
