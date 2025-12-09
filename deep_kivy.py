@@ -872,31 +872,24 @@ def run_bot(headless=False):
             if "planning" not in current_url:
                 log(f"   ⚠️ No estamos en planning, estamos en: {current_url}")
             
-            # PASO 3: DEBUG - Mostrar HTML actual
+           # ... después de la lógica de espera activa del PASO 2:
+            
+            # 💡 PASO 3: SELECCIONAR FECHA
+            log("3. Seleccionando fecha objetivo...")
+            frame = ActivityFinder.get_planning_frame(page) # Obtener el frame principal
+            # Llama a la lógica robusta de navegación por fecha
+            DateNavigator.ensure_date_selected(frame)
+            
+            # 💡 PASO 4: BUSCAR ACTIVIDAD
+            log("4. Buscando actividad...")
+            plazas = ActivityFinder.find_activity(frame)
+            
+            # PASO 5: DEBUG FINAL (Opcional, pero útil)
             html = page.content()
-            log(f"   📄 Longitud HTML: {len(html)} caracteres")
+            log(f"   📄 Longitud HTML final: {len(html)} caracteres")
             
-            # Buscar evidencias inmediatas
-            if ACTIVITY_NAME.lower() in html.lower():
-                log(f"   ✅ ¡'{ACTIVITY_NAME}' DETECTADO EN HTML!")
-            else:
-                log(f"   ❌ '{ACTIVITY_NAME}' NO encontrado en HTML")
-            
-            if ACTIVITY_HOUR in html:
-                log(f"   ✅ Hora '{ACTIVITY_HOUR}' encontrada en HTML")
-            else:
-                # Buscar variantes de hora
-                hour_variants = [ACTIVITY_HOUR, ACTIVITY_HOUR.lstrip('0'), ACTIVITY_HOUR.replace(':00', '')]
-                found = False
-                for variant in hour_variants:
-                    if variant in html:
-                        log(f"   ✅ Hora '{variant}' (variante) encontrada")
-                        found = True
-                        break
-                if not found:
-                    log(f"   ❌ Hora '{ACTIVITY_HOUR}' NO encontrada (ni variantes)")
-              
-                   
+            return plazas # <--- El resultado final de la búsqueda
+
         except Exception as e:
             log(f"💥 Error crítico: {e}")
             screenshot(page, "error_critico")
@@ -1321,6 +1314,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
