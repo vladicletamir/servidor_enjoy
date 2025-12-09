@@ -879,30 +879,32 @@ def run_bot(headless=False):
             # ---------------------------------------------------------
             
             # PASO 3: SELECCIONAR LA FECHA CORRECTA
-            log(f"3. Seleccionando fecha objetivo: {TARGET_DAY} de {TARGET_MONTH}...")
+           log(f"3. Seleccionando fecha objetivo: {TARGET_DAY} de {TARGET_MONTH}...")
             
-            # Detectamos si hay iframes (común en Resamania) o usamos la página principal
+            # Detectamos el frame principal (necesario en Resamania)
             frame = ActivityFinder.get_planning_frame(page)
             
-            # Ejecutamos la lógica que busca el día y hace clic
+            # Ejecutamos la lógica que busca el día '9' y le hace clic
             DateNavigator.ensure_date_selected(frame)
             
-            # Pequeña espera para que refresque la tabla tras el clic
+            # Pequeña espera para que la tabla se actualice tras el clic
             page.wait_for_timeout(2000)
 
             # PASO 4: BUSCAR LA ACTIVIDAD
             log(f"4. Buscando actividad: {ACTIVITY_NAME}...")
             plazas = ActivityFinder.find_activity(frame)
             
-            # PASO 5: RESULTADO FINAL
+            # PASO 5: RETORNAR RESULTADO
             if plazas != -1:
                 log(f"🎉 ¡Resultado encontrado! Plazas: {plazas}")
+                return plazas
             else:
                 log("❌ No se encontró la actividad tras navegar.")
-                # Opcional: Imprimir HTML si falla para depurar
-                # print(frame.content()[:1000]) 
+                # Si falla, devolvemos -1
+                return -1
+            
 
-            return plazas
+         
 
             # ---------------------------------------------------------
             # FIN DEL CÓDIGO NUEVO
@@ -1332,6 +1334,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
