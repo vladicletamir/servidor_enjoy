@@ -818,7 +818,7 @@ def run_bot(headless=False):
     log(f"🔑 Usuario configurado: {'SÍ' if USERNAME else 'NO'}")
     log(f"🔑 Contraseña configurada: {'SÍ' if PASSWORD else 'NO'}")
     
-    with sync_playwright() as p:
+        with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=headless,
                 # ✅ CORRECCIÓN: Los argumentos deben ir aquí
@@ -1303,6 +1303,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
