@@ -858,13 +858,11 @@ def run_bot(headless=False):
             
             # ✅ CORRECCIÓN CRÍTICA: Esperar a que un elemento de contenido real aparezca
             try:
-                # Buscamos un selector genérico que indica que el contenido de la tabla ha cargado.
-                # El selector '[class*="Mui"]' es común en la web de Resamania (Material UI).
-                page.wait_for_selector("[class*='PlanningGrid-root'], [class*='MuiPaper-root'], [class*='planning']", 
-                                       timeout=15000) # Esperar hasta 15 segundos
+                page.wait_for_selector("[class*='PlanningGrid-root'], [class*='MuiGrid-container'], [class*='MuiPaper-root'], [class*='planning']", 
+                                       timeout=20000) # Subir a 20s por seguridad
                 log("   ✅ Contenido de planificación detectado.")
             except PlaywrightTimeoutError:
-                log("   ⚠️ Falla: El contenido de planificación no apareció tras 15s. Continuamos...")
+                log("   ⚠️ Falla: El contenido de planificación no apareció tras 20s. Continuamos...")
             
             page.wait_for_timeout(2000) # Espera de seguridad extra
             
@@ -1103,9 +1101,18 @@ def debug_html():
                 logs.append("✅ Ya estaba logueado o login automático funcionó")
             
             # 2. Ir a planning
-            logs.append("📅 2. Navegando a planning...")
+            logs.append("📅 2. Navegando a planning y esperando contenido...")
             page.goto("https://member.resamania.com/enjoy/planning", wait_until="networkidle", timeout=30000)
-            time.sleep(3)
+            
+            # Espera ACTIVA para renderizado
+            try:
+                page.wait_for_selector("[class*='PlanningGrid-root'], [class*='MuiGrid-container'], [class*='MuiPaper-root'], [class*='planning']", 
+                                       timeout=20000)
+                logs.append("✅ Contenido de planificación detectado después de espera activa.")
+            except PlaywrightTimeoutError:
+                logs.append("⚠️ Timeout en espera activa (20s). El contenido sigue siendo de carga.")
+            
+            time.sleep(2)
             
             # 3. Obtener HTML actual
             html_content = page.content()
@@ -1314,6 +1321,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
