@@ -565,27 +565,31 @@ class DateNavigator:
     
     @staticmethod
     def _click_day_directly(page, target_day):
-        log(f"   * Intentando hacer clic directo en el día '{target_day}'")
+        log(f"   * Intentando FORZAR el clic en el día '{target_day}' con JS.")
         
-        # 🚨 SELECTOR MEJORADO (BUSCA POR EL TEXTO DENTRO DE CUALQUIER BOTÓN/DIV)
-        # Esto ignora los cambios de clases CSS.
+        # Selector robusto (el mismo que ya usaste)
         DAY_SELECTOR = f"//button[normalize-space(.)='{target_day}'] | //div[normalize-space(.)='{target_day}']"
         
         try:
-            # Esperar a que el selector esté visible
-            page.wait_for_selector(DAY_SELECTOR, timeout=10000)
+            # 1. Esperar a que el elemento esté en el DOM (visible, habilitado)
+            element = page.wait_for_selector(DAY_SELECTOR, timeout=10000, state='visible')
             
-            # Usar .click(force=True) para asegurar que el clic se realiza
-            page.locator(DAY_SELECTOR).click(force=True)
+            # 2. INYECTAR JAVASCRIPT para hacer clic (más robusto que .click())
+            page.evaluate('(element) => element.click()', element)
             
-            log(f"   ✅ Día '{target_day}' clicado correctamente.")
+            log(f"   ✅ Día '{target_day}' clicado correctamente mediante JS.")
+            
+            # 3. Espera crucial: esperar a que la red cargue los nuevos eventos del día
+            page.wait_for_load_state("networkidle", timeout=15000) 
+            
+            log(f"   ✅ Red inactiva tras el clic. Contenido cargado.")
             return True
             
         except PlaywrightTimeoutError:
-            log(f"   ❌ El botón del día '{target_day}' no fue encontrado para hacer clic.")
+            log(f"   ❌ El elemento del día '{target_day}' no fue encontrado a tiempo.")
             return False
         except Exception as e:
-            log(f"   💥 Error al hacer clic en el día: {e}")
+            log(f"   💥 Error inesperado al forzar el clic: {e}")
             return False
     
     @staticmethod
@@ -1323,6 +1327,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
