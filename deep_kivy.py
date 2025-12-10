@@ -1158,12 +1158,14 @@ def debug_html():
     
     # Devolver HTML y logs
     return jsonify({
-        "logs": logs,
-        "html_length": len(html_content),
-        "contains_activity": actividad.upper() in html_content.upper(),
-        "contains_hour": hora in html_content,
-        "html": html_content[:2000] + "..." if len(html_content) > 2000 else html_content
-    })
+            "contains_activity": contains_activity,
+            "contains_hour": contains_hour,
+            # 🚨 CAMBIAR esto para que devuelva todo el HTML, no solo la preview
+            "html": html,  # <--- Asegúrate de que esta línea devuelva la cadena 'html' completa
+            "html_length": len(html),
+            "logs": logs
+            # Elimina o comenta cualquier parte que corte el HTML aquí
+        })
 
 @app.route('/test_ultra_simple', methods=['GET'])
 def test_ultra_simple():
@@ -1333,6 +1335,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
