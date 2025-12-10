@@ -1081,92 +1081,72 @@ def health_check():
         "gui_available": GUI_AVAILABLE
     })
 @app.route('/debug_html', methods=['GET'])
+@app.route('/debug_html', methods=['GET'])
 def debug_html():
-    """Devuelve el HTML cruto que ve el bot (sin ejecutar toda la lógica)"""
+    """Versión robusta que devuelve HTML completo y no falla"""
     from playwright.sync_api import sync_playwright
     import time
     
-    # Configurar parámetros
-    actividad = request.args.get('actividad', 'ZUMBA')
-    hora = request.args.get('hora', '10:00')
-    dia = request.args.get('dia', '6')
-    mes = request.args.get('mes', 'diciembre')
+    # 1. Inicializar variables POR DEFECTO para evitar NameError
+    actividad = request.args.get('actividad', '')
+    hora = request.args.get('hora', '')
+    dia = request.args.get('dia', '')
+    mes = request.args.get('mes', '')
     
     logs = []
-    html_content = ""
+    html_content = "No se pudo obtener contenido (Fallo antes de renderizar)"
+    contains_activity = False
     
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            # Lanzamos navegador con argumentos Docker
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
             context = browser.new_context(viewport={"width": 1280, "height": 900})
             page = context.new_page()
             
-            # 1. Login rápido
-            logs.append("🔐 1. Intentando login...")
-            page.goto("https://member.resamania.com/enjoy", wait_until="networkidle", timeout=30000)
-            time.sleep(2)
-            
-            # Verificar si ya está logueado
-            if "login" in page.url:
-                logs.append("❌ Parece que no está logueado")
+            # A. Login
+            logs.append("1. Iniciando navegación...")
+            if SessionManager.restore_session(page):
+                logs.append("   Sesión restaurada.")
             else:
-                logs.append("✅ Ya estaba logueado o login automático funcionó")
+                logs.append("   Haciendo login completo...")
+                SessionManager.perform_login(page, context)
             
-            # 2. Ir a planning
-            logs.append("📅 2. Navegando a planning y esperando contenido...")
-            page.goto("https://member.resamania.com/enjoy/planning", wait_until="networkidle", timeout=30000)
+            # B. Ir a Planning
+            logs.append("2. Yendo a planning...")
+            page.goto(PLANNING_URL, wait_until="networkidle", timeout=30000)
             
-            # Espera ACTIVA para renderizado
+            # C. Intentar Clic en el Día (Lógica Simplificada para Debug)
+            logs.append(f"3. Intentando clic en día {dia}...")
             try:
-                page.wait_for_selector("[class*='PlanningGrid-root'], [class*='MuiGrid-container'], [class*='MuiPaper-root'], [class*='planning']", 
-                                       timeout=20000)
-                logs.append("✅ Contenido de planificación detectado después de espera activa.")
-            except PlaywrightTimeoutError:
-                logs.append("⚠️ Timeout en espera activa (20s). El contenido sigue siendo de carga.")
-            
-            time.sleep(2)
-            
-            # 3. Obtener HTML actual
+                # Selector agresivo por texto
+                selector_dia = f"//button[normalize-space(.)='{dia}'] | //div[normalize-space(.)='{dia}']"
+                page.wait_for_selector(selector_dia, timeout=5000)
+                element = page.locator(selector_dia).first
+                # Forzar clic JS
+                page.evaluate('(el) => el.click()', element.element_handle())
+                logs.append("   ✅ Clic JS realizado.")
+                page.wait_for_timeout(3000) # Espera para carga
+            except Exception as e:
+                logs.append(f"   ⚠️ No se pudo hacer clic en el día: {e}")
+
+            # D. Obtener HTML
             html_content = page.content()
-            logs.append(f"📄 3. HTML obtenido: {len(html_content)} caracteres")
-            
-            # 4. Buscar evidencias
-            if actividad.upper() in html_content.upper():
-                logs.append(f"✅ ACTIVIDAD '{actividad}' ENCONTRADA en HTML")
-            else:
-                logs.append(f"❌ ACTIVIDAD '{actividad}' NO encontrada en HTML")
-            
-            if hora in html_content:
-                logs.append(f"✅ HORA '{hora}' ENCONTRADA en HTML")
-            else:
-                logs.append(f"❌ HORA '{hora}' NO encontrada en HTML")
-            
-            if mes.lower() in html_content.lower():
-                logs.append(f"✅ MES '{mes}' ENCONTRADO en HTML")
-            else:
-                logs.append(f"❌ MES '{mes}' NO encontrado en HTML")
-            
-            if dia in html_content:
-                logs.append(f"✅ DÍA '{dia}' ENCONTRADO en HTML")
-            else:
-                logs.append(f"❌ DÍA '{dia}' NO encontrado en HTML")
+            contains_activity = actividad.upper() in html_content.upper()
+            logs.append(f"4. HTML capturado ({len(html_content)} chars)")
             
             browser.close()
             
     except Exception as e:
-        logs.append(f"💥 ERROR: {str(e)}")
+        logs.append(f"💥 ERROR CRÍTICO: {str(e)}")
     
-    # Devolver HTML y logs
+    # 2. Retorno seguro (nunca fallará porque las variables ya existen)
     return jsonify({
-            "contains_activity": contains_activity,
-            "contains_hour": contains_hour,
-            # 🚨 CAMBIAR esto para que devuelva todo el HTML, no solo la preview
-            "html": html,  # <--- Asegúrate de que esta línea devuelva la cadena 'html' completa
-            "html_length": len(html),
-            "logs": logs
-            # Elimina o comenta cualquier parte que corte el HTML aquí
-        })
-
+        "logs": logs,
+        "html_length": len(html_content),
+        "contains_activity": contains_activity,
+        "html": html_content  # <--- AQUÍ ESTÁ EL CÓDIGO FUENTE QUE NECESITAMOS
+    })
 @app.route('/test_ultra_simple', methods=['GET'])
 def test_ultra_simple():
     """Bot ultra simplificado - solo busca texto"""
@@ -1335,6 +1315,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
