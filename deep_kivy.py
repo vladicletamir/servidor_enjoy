@@ -1162,7 +1162,7 @@ def debug_html():
         "html_length": len(html_content),
         "contains_activity": actividad.upper() in html_content.upper(),
         "contains_hour": hora in html_content,
-        "html_preview": html_content[:2000] + "..." if len(html_content) > 2000 else html_content
+        "html": html_content[:2000] + "..." if len(html_content) > 2000 else html_content
     })
 
 @app.route('/test_ultra_simple', methods=['GET'])
@@ -1333,6 +1333,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
