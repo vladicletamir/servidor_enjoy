@@ -581,6 +581,12 @@ class DateNavigator:
             
             # 3. Espera crucial: esperar a que la red cargue los nuevos eventos del día
             page.wait_for_load_state("networkidle", timeout=15000) 
+
+            🚨 ESPERA DE SEGURIDAD EXTREMA: Forzar una pausa para el renderizado JS
+            page.wait_for_timeout(15000) # Esperar 10 segundos fijos 
+        
+            log(f"   ✅ Espera extrema de 10s completada. El contenido debería estar cargado.")
+           
             
             log(f"   ✅ Red inactiva tras el clic. Contenido cargado.")
             return True
@@ -1327,6 +1333,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
