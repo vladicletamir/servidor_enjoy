@@ -430,6 +430,7 @@ class SessionManager:
     @staticmethod
     def _click_login_button(page):
         selectors = [
+            "button:has-text('Log in')",  # <--- NUEVO (Inglés)
             "button:has-text('Iniciar sesión')",
             "a:has-text('Iniciar sesión')",
             "button:has-text('Acceder')",
@@ -476,7 +477,7 @@ class SessionManager:
     
     @staticmethod
     def _click_continue(page):
-        selectors = ["button:has-text('Introducir mi contraseña')", "button:has-text('Continuar')", "button:has-text('Siguiente')"]
+        selectors = ["button:has-text('Introducir mi contraseña')", "button:has-text('Continuar')", "button:has-text('Continue')","button:has-text('Siguiente')"]
         for frame in [page] + page.frames:
             for selector in selectors:
                 try:
@@ -503,7 +504,7 @@ class SessionManager:
     
     @staticmethod
     def _click_connect(page):
-        selectors = ["button:has-text('Conectarme a mi club')", "button:has-text('Conectarme')", "button:has-text('Entrar')"]
+        selectors = ["button:has-text('Conectarme a mi club')","button:has-text('Connect')","button:has-text('Sign in')", "button:has-text('Conectarme')", "button:has-text('Log in')", "button:has-text('Entrar')"]
         for frame in [page] + page.frames:
             for selector in selectors:
                 try:
@@ -1315,6 +1316,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
