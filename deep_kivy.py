@@ -621,6 +621,102 @@ class DateNavigator:
         return False
     
     @staticmethod
+    def ensure_correct_date_loaded(page):
+        """Solución ESPECÍFICA para el problema de la web Enjoy"""
+        log("🔍 Verificando estado de la fecha en la página...")
+        
+        # Obtener todo el texto de la página
+        all_text = page.text_content()
+        
+        # Caso 1: ¿Aparece "Fecha inválida" o "Ningún resultado para este día"?
+        if "Fecha inválida" in all_text or "Ningún resultado para este día" in all_text:
+            log("⚠️ ¡DETECTADO! La página muestra 'Fecha inválida'")
+            log("🔄 Haciendo clic en 'HOY' para corregir...")
+            
+            # INTENTAR HACER CLIC EN "HOY"
+            hoy_selectors = [
+                "button:has-text('HOY')",
+                "button:has-text('Hoy')", 
+                "button:has-text('TODAY')",
+                "button:has-text('Today')",
+                "[aria-label*='hoy' i]",
+                "[aria-label*='today' i]"
+            ]
+            
+            for selector in hoy_selectors:
+                try:
+                    if page.locator(selector).count() > 0:
+                        page.click(selector)
+                        log(f"✅ Clic en '{selector}' para seleccionar HOY")
+                        page.wait_for_timeout(3000)  # Esperar a que cargue
+                        return True
+                except:
+                    continue
+            
+            # Si no encuentra "HOY", intentar con la fecha actual
+            from datetime import datetime
+            today = datetime.now().day
+            log(f"🔍 Intentando clic en día {today} (hoy)...")
+            
+            try:
+                page.locator(f"text='{today}'").first.click()
+                log(f"✅ Clic en día {today}")
+                page.wait_for_timeout(3000)
+                return True
+            except:
+                log("❌ No se pudo hacer clic en HOY o día actual")
+        
+        # Caso 2: ¿Aparecen fechas antiguas (junio 2022)?
+        if "jun. de 2022" in all_text or "junio 2022" in all_text.lower():
+            log("⚠️ ¡DETECTADO! La página muestra fechas de junio 2022")
+            log("🔄 Intentando corregir fecha a HOY...")
+            
+            # Buscar selector de fecha y abrirlo
+            date_selectors = [
+                "button:has-text('FECHA')",
+                "input[placeholder*='fecha' i]",
+                "[aria-label*='fecha' i]"
+            ]
+            
+            for selector in date_selectors:
+                try:
+                    if page.locator(selector).count() > 0:
+                        page.click(selector)
+                        log(f"✅ Abierto selector de fecha: {selector}")
+                        page.wait_for_timeout(1000)
+                        
+                        # Ahora buscar y hacer clic en "HOY" en el calendario
+                        hoy_in_calendar = page.locator("button:has-text('HOY'), button:has-text('Hoy'), [aria-label*='hoy' i]").first
+                        if hoy_in_calendar.count() > 0:
+                            hoy_in_calendar.click()
+                            log("✅ Clic en HOY dentro del calendario")
+                            page.wait_for_timeout(2000)
+                            return True
+                except:
+                    continue
+        
+        # Caso 3: Verificar si hay actividades visibles
+        actividades_visibles = "INSCRIBIRSE" in all_text or "PLAZA" in all_text
+        if not actividades_visibles:
+            log("⚠️ No hay actividades visibles, podría ser problema de fecha")
+            
+            # Esperar un poco más por si está cargando
+            page.wait_for_timeout(2000)
+            all_text = page.text_content()
+            
+            # Si después de esperar sigue sin actividades, intentar HOY
+            if not ("INSCRIBIRSE" in all_text or "PLAZA" in all_text):
+                log("🔄 Sin actividades después de espera, intentando HOY...")
+                try:
+                    page.locator("button:has-text('HOY'), button:has-text('Hoy')").first.click()
+                    page.wait_for_timeout(3000)
+                    return True
+                except:
+                    pass
+        
+        return True
+    
+    @staticmethod
     def _select_via_calendar_picker(page):
         """Selecciona fecha usando el selector de calendario (más seguro)"""
         try:
@@ -826,8 +922,8 @@ class ActivityFinder:
 # ---------------------------------------------------------
 
 
-def run_bot(headless=False):
-    """Ejecuta el bot y retorna número de plazas - VERSIÓN CORREGIDA"""
+ def run_bot(headless=False):
+    """Ejecuta el bot y retorna número de plazas"""
     log("🚀 Iniciando bot...")
     log(f"🎯 Objetivo: {ACTIVITY_NAME} {ACTIVITY_HOUR} ({TARGET_DAY} {TARGET_MONTH})")
     
@@ -838,84 +934,121 @@ def run_bot(headless=False):
         )
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
-        
+       
         try:
-            # PASO 1: LOGIN
-            log("1. Login...")
-            if SessionManager.restore_session(page):
-                page.goto(PLANNING_URL, wait_until="networkidle", timeout=30000)
-                if not SessionManager.is_logged_in(page):
-                    SessionManager.perform_login(page, context)
-            else:
-                SessionManager.perform_login(page, context)
+            # PASO 1: LOGIN O RESTAURAR
+            log("1. Intentando restaurar sesión o login...")
             
-            # PASO 2: IR A PLANNING Y ESPERAR
-            log("2. Cargando planning...")
-            page.goto(PLANNING_URL, wait_until="networkidle", timeout=30000)
+            if SessionManager.restore_session(page):
+                log("   ✅ Intento de restauración de sesión")
+                page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
+                page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
+                
+                current_url = page.url
+                log(f"   📍 URL después de restore: {current_url}")
+                
+                if SessionManager.is_logged_in(page):
+                    log("   ✅ ¡Sesión restaurada con éxito!")
+                else:
+                    log("   ❌ Restauración fallida, forzando login...")
+                    if not SessionManager.perform_login(page, context):
+                        log("   💥 Login fallido después de restore")
+                        return -1
+            else:
+                log("   🔄 No hay sesión guardada, haciendo login completo...")
+                if not SessionManager.perform_login(page, context):
+                    log("   💥 Login completo fallido")
+                    return -1
+            
+            # PASO 2: VERIFICAR QUE ESTAMOS EN PLANNING
+            log("2. Verificando ubicación y esperando la planificación...")
+            page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
+            page.wait_for_timeout(5000)  # Espera inicial
+            
+            # NUEVO PASO CRÍTICO: Verificar y corregir fecha si es necesario
+            log("3. Verificando estado de la fecha...")
+            DateNavigator.ensure_correct_date_loaded(page)
+            
+            # ESPERA ADICIONAL para asegurar carga completa
             page.wait_for_timeout(3000)
             
-            # DEBUG: Mostrar qué día ve inicialmente
-            initial_text = page.text_content()
-            log(f"   Texto inicial (50 chars): {initial_text[:50]}...")
+            # VERIFICAR: ¿Tenemos actividades visibles ahora?
+            current_text = page.text_content()
+            if "INSCRIBIRSE" not in current_text and "PLAZA" not in current_text:
+                log("⚠️ Aún no hay actividades visibles después de corregir fecha")
+                log("🔄 Intentando clic en HOY como último recurso...")
+                
+                # Último intento: buscar y hacer clic en HOY de forma agresiva
+                hoy_selectors = [
+                    "//button[contains(., 'HOY')]",
+                    "//button[contains(., 'Hoy')]",
+                    "//*[contains(text(), 'HOY') and @role='button']"
+                ]
+                
+                for selector in hoy_selectors:
+                    try:
+                        if page.locator(selector).count() > 0:
+                            page.locator(selector).first.click()
+                            log(f"✅ Clic agresivo en HOY con selector: {selector}")
+                            page.wait_for_timeout(3000)
+                            break
+                    except:
+                        continue
             
-            # PASO 3: GESTIÓN DE FECHA INTELIGENTE
-            log("3. Gestionando fecha...")
+            # PASO 4: GESTIÓN DE FECHA OBJETIVO
+            log(f"4. Gestionando fecha objetivo: {TARGET_DAY} de {TARGET_MONTH}")
             
             from datetime import datetime
             today = datetime.now().day
             
-            # Si el día objetivo es HOY
-            if str(today) == TARGET_DAY:
-                log(f"   🎯 Buscamos HOY ({TARGET_DAY}) - No tocamos nada")
-                # NO hacemos clic, ya debería estar seleccionado
-            else:
+            # Solo cambiar fecha si NO es hoy
+            if str(today) != TARGET_DAY:
                 log(f"   🔄 Buscamos día {TARGET_DAY} (no es hoy)")
-                # Usar la nueva lógica que verifica si ya está seleccionado
-                DateNavigator.ensure_date_selected(page)
+                
+                # Intentar seleccionar el día objetivo
+                try:
+                    # Buscar el día en la vista semanal
+                    day_element = page.locator(f"text='{TARGET_DAY}'").first
+                    if day_element.count() > 0 and day_element.is_visible():
+                        day_element.click()
+                        log(f"   ✅ Clic en día {TARGET_DAY}")
+                        page.wait_for_timeout(3000)
+                except Exception as e:
+                    log(f"   ⚠️ No se pudo hacer clic en día {TARGET_DAY}: {e}")
+            else:
+                log(f"   🎯 Buscamos HOY ({TARGET_DAY}) - Ya debería estar seleccionado")
             
-            # ESPERA CRÍTICA después de cualquier cambio de fecha
-            log("4. Esperando carga de actividades...")
-            page.wait_for_timeout(5000)  # Espera generosa
+            # PASO 5: BUSCAR LA ACTIVIDAD
+            log(f"5. Buscando actividad: {ACTIVITY_NAME}...")
             
-            # DEBUG: Ver qué actividades hay ahora
-            current_text = page.text_content()
-            lines = [l.strip() for l in current_text.split('\n') if l.strip()]
-            log(f"   Líneas de texto encontradas: {len(lines)}")
-            
-            # Mostrar líneas relevantes
-            relevant = []
-            for line in lines:
-                if any(keyword in line.upper() for keyword in [ACTIVITY_NAME.upper(), 'INSCRIBIRSE', 'PLAZA', ACTIVITY_HOUR]):
-                    relevant.append(line[:100])
-            
-            if relevant:
-                log(f"   Líneas relevantes ({len(relevant)}):")
-                for line in relevant[:5]:
-                    log(f"     - {line}")
-            
-            # PASO 4: BUSCAR ACTIVIDAD
-            log("5. Buscando actividad...")
+            # Obtener frame de planificación
             frame = ActivityFinder.get_planning_frame(page)
+            
+            # Hacer scroll para asegurar que todo está visible
+            page.mouse.wheel(0, 500)
+            page.wait_for_timeout(1000)
+            
+            # Buscar la actividad
             plazas = ActivityFinder.find_activity(frame)
             
-            # PASO 5: RETORNAR RESULTADO
+            # PASO 6: RETORNAR RESULTADO
             if plazas != -1:
                 log(f"🎉 ¡Resultado encontrado! Plazas: {plazas}")
                 return plazas
             else:
                 log("❌ No se encontró la actividad")
                 
-                # DEBUG EXTRA: Mostrar todo el texto para diagnóstico
+                # DEBUG EXTRA: Mostrar qué hay en la página
                 all_text = page.text_content()
-                if ACTIVITY_NAME.upper() in all_text.upper():
-                    log(f"⚠️ PERO '{ACTIVITY_NAME}' SÍ aparece en el texto!")
-                    log(f"   Muestra: '{all_text[all_text.upper().find(ACTIVITY_NAME.upper()):all_text.upper().find(ACTIVITY_NAME.upper())+200]}...'")
+                log(f"📄 Contenido actual de la página (primeros 500 chars):")
+                log(f"{all_text[:500]}...")
                 
                 return -1
-            
+
         except Exception as e:
             log(f"💥 Error crítico: {e}")
             return -1
+        
         finally:
             browser.close()
             log("👋 Bot finalizado")
@@ -984,6 +1117,110 @@ def debug_planning_html():
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+
+@app.route('/debug_fecha_problema', methods=['GET'])
+def debug_fecha_problema():
+    """Debug ESPECÍFICO del problema de fecha inválida"""
+    from playwright.sync_api import sync_playwright
+    
+    logs = []
+    
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"]
+            )
+            context = browser.new_context(viewport={"width": 1280, "height": 900})
+            page = context.new_page()
+            
+            logs.append("1. Login...")
+            page.goto("https://member.resamania.com/enjoy/planning", wait_until="networkidle", timeout=30000)
+            page.wait_for_timeout(5000)
+            
+            # Verificar estado inicial
+            initial_text = page.text_content()
+            logs.append(f"2. Texto inicial muestra:")
+            
+            # Buscar problemas específicos
+            problemas = {
+                "Fecha inválida": "Fecha inválida" in initial_text,
+                "Ningún resultado": "Ningún resultado para este día" in initial_text,
+                "junio 2022": "jun. de 2022" in initial_text or "junio 2022" in initial_text.lower(),
+                "Actividades visibles": "INSCRIBIRSE" in initial_text or "PLAZA" in initial_text
+            }
+            
+            for problema, encontrado in problemas.items():
+                logs.append(f"   - {problema}: {'✅ SÍ' if encontrado else '❌ NO'}")
+            
+            # Intentar solución
+            if any([problemas["Fecha inválida"], problemas["Ningún resultado"], problemas["junio 2022"]]):
+                logs.append("3. ¡PROBLEMA DETECTADO! Aplicando solución...")
+                
+                # Buscar botón HOY
+                hoy_selectors = ["button:has-text('HOY')", "button:has-text('Hoy')"]
+                hoy_encontrado = False
+                
+                for selector in hoy_selectors:
+                    if page.locator(selector).count() > 0:
+                        logs.append(f"   ✅ Encontrado: {selector}")
+                        page.click(selector)
+                        logs.append(f"   ✅ Clic en {selector}")
+                        hoy_encontrado = True
+                        break
+                
+                if not hoy_encontrado:
+                    logs.append("   ❌ No se encontró botón HOY")
+                
+                # Esperar y verificar resultado
+                page.wait_for_timeout(3000)
+                new_text = page.text_content()
+                
+                logs.append("4. Después del clic en HOY:")
+                nuevos_problemas = {
+                    "Fecha inválida": "Fecha inválida" in new_text,
+                    "Actividades visibles": "INSCRIBIRSE" in new_text or "PLAZA" in new_text
+                }
+                
+                for problema, encontrado in nuevos_problemas.items():
+                    logs.append(f"   - {problema}: {'✅ SÍ' if encontrado else '❌ NO'}")
+                
+                if nuevos_problemas["Actividades visibles"]:
+                    logs.append("5. ¡SOLUCIÓN EXITOSA! Ahora hay actividades visibles")
+                else:
+                    logs.append("5. ❌ La solución no funcionó")
+            
+            else:
+                logs.append("3. ✅ No se detectaron problemas de fecha")
+            
+            # Mostrar líneas relevantes
+            lines = [l.strip() for l in initial_text.split('\n') if l.strip()]
+            relevant_lines = []
+            for line in lines:
+                if any(keyword in line for keyword in ['HOY', 'Hoy', 'FECHA', 'INSCRIBIRSE', 'PLAZA', 'jun.', '2022']):
+                    relevant_lines.append(line[:80])
+            
+            if relevant_lines:
+                logs.append("6. Líneas relevantes encontradas:")
+                for i, line in enumerate(relevant_lines[:5]):
+                    logs.append(f"   {i+1}. {line}")
+            
+            browser.close()
+            
+            return jsonify({
+                "success": True,
+                "logs": logs,
+                "problema_detectado": any([problemas["Fecha inválida"], problemas["Ningún resultado"], problemas["junio 2022"]])
+            })
+            
+    except Exception as e:
+        logs.append(f"💥 ERROR: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "logs": logs
+        }), 500
+
 
 
 @app.route('/buscar', methods=['GET', 'POST'])
