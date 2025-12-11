@@ -922,7 +922,7 @@ class ActivityFinder:
 # ---------------------------------------------------------
 
 
- def run_bot(headless=False):
+def run_bot(headless=False):
     """Ejecuta el bot y retorna número de plazas"""
     log("🚀 Iniciando bot...")
     log(f"🎯 Objetivo: {ACTIVITY_NAME} {ACTIVITY_HOUR} ({TARGET_DAY} {TARGET_MONTH})")
@@ -1618,6 +1618,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
