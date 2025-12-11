@@ -429,8 +429,10 @@ class SessionManager:
     
     @staticmethod
     def _click_login_button(page):
+        # AÑADIDO: Selectores en INGLÉS ('Log in')
         selectors = [
-            "button:has-text('Log in')",  # <--- NUEVO (Inglés)
+            "button:has-text('Log in')",  # <--- CRUCIAL: Esto es lo que sale en tu HTML
+            "button:has-text('Sign in')",
             "button:has-text('Iniciar sesión')",
             "a:has-text('Iniciar sesión')",
             "button:has-text('Acceder')",
@@ -439,6 +441,7 @@ class SessionManager:
         
         robust_selectors = [
             "[role='button']:has-text('sesión' i), [role='button']:has-text('Acceder' i)",
+            "[role='button']:has-text('Log in' i)", # <--- Robustez extra
             "button[type='submit']",
             "a[href*='login']",
         ]
@@ -451,7 +454,7 @@ class SessionManager:
                 elements = page.locator(selector).all()
                 for elem in elements:
                     if elem.is_visible() and elem.is_enabled():
-                        log(f"   ✅ Click en selector robusto: '{selector}'")
+                        log(f"   ✅ Click en selector: '{selector}'")
                         elem.click(timeout=TIMEOUT_CONFIG['element'])
                         page.wait_for_timeout(TIMEOUT_CONFIG['short_wait'])
                         return True
@@ -477,7 +480,14 @@ class SessionManager:
     
     @staticmethod
     def _click_continue(page):
-        selectors = ["button:has-text('Introducir mi contraseña')", "button:has-text('Continuar')", "button:has-text('Continue')","button:has-text('Siguiente')"]
+        # AÑADIDO: 'Continue', 'Next', 'Password'
+        selectors = [
+            "button:has-text('Continue')", 
+            "button:has-text('Next')",
+            "button:has-text('Password')", # A veces el botón dice "Password" para ir al siguiente paso
+            "button:has-text('Introducir mi contraseña')", 
+            "button:has-text('Siguiente')"
+        ]
         for frame in [page] + page.frames:
             for selector in selectors:
                 try:
@@ -504,7 +514,14 @@ class SessionManager:
     
     @staticmethod
     def _click_connect(page):
-        selectors = ["button:has-text('Conectarme a mi club')","button:has-text('Connect')","button:has-text('Sign in')", "button:has-text('Conectarme')", "button:has-text('Log in')", "button:has-text('Entrar')"]
+        # AÑADIDO: 'Log in', 'Sign in'
+        selectors = [
+            "button:has-text('Log in')", # A veces el botón final también se llama Log in
+            "button:has-text('Sign in')",
+            "button:has-text('Conectarme a mi club')", 
+            "button:has-text('Conectarme')", 
+            "button:has-text('Entrar')"
+        ]
         for frame in [page] + page.frames:
             for selector in selectors:
                 try:
@@ -1316,6 +1333,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
