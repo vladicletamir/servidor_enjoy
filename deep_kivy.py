@@ -792,7 +792,61 @@ class DateNavigator:
         except:
             return False
 
+    # Añade esta función en tu archivo principal (después de la clase DateNavigator)
 
+def fix_fecha_invalida(page):
+    """Corrige específicamente el problema 'Fecha inválida' de Enjoy"""
+    log("🔧 Verificando si hay que corregir fecha inválida...")
+    
+    try:
+        # Obtener texto de la página
+        text = page.text_content()
+        
+        # Condiciones que indican problema
+        condiciones_problema = [
+            "Fecha inválida" in text,
+            "Ningún resultado para este día" in text,
+            "jun. de 2022" in text
+        ]
+        
+        if any(condiciones_problema):
+            log("⚠️ ¡DETECTADO! Problema de fecha inválida")
+            
+            # Solución 1: Hacer clic en HOY
+            try:
+                hoy_buttons = page.locator("button:has-text('HOY'), button:has-text('Hoy')")
+                if hoy_buttons.count() > 0:
+                    hoy_buttons.first.click()
+                    log("✅ Clic en HOY para corregir fecha")
+                    page.wait_for_timeout(3000)
+                    return True
+            except:
+                pass
+            
+            # Solución 2: Hacer clic en FECHA y luego en HOY en calendario
+            try:
+                fecha_button = page.locator("button:has-text('FECHA')").first
+                if fecha_button.count() > 0:
+                    fecha_button.click()
+                    page.wait_for_timeout(1000)
+                    
+                    # Buscar HOY en el calendario
+                    hoy_cal = page.locator("button:has-text('HOY'), button:has-text('Hoy')").first
+                    if hoy_cal.count() > 0:
+                        hoy_cal.click()
+                        log("✅ Clic en FECHA -> HOY en calendario")
+                        page.wait_for_timeout(3000)
+                        return True
+            except:
+                pass
+            
+            log("❌ No se pudo corregir automáticamente")
+        
+        return False
+    
+    except Exception as e:
+        log(f"⚠️ Error en fix_fecha_invalida: {e}")
+        return False
 # ===============================
 # BÚSQUEDA DE ACTIVIDADES
 # ===============================
@@ -971,7 +1025,33 @@ def run_bot(headless=False):
             
             # ESPERA ADICIONAL para asegurar carga completa
             page.wait_for_timeout(3000)
-            
+            log("🔧 Verificando estado de la fecha...")
+            fix_fecha_invalida(page)
+    
+            # Esperar a que se actualice
+            page.wait_for_timeout(3000)
+    
+            # Verificar si ahora tenemos actividades
+            text_actual = page.text_content()
+            if "INSCRIBIRSE" not in text_actual and "PLAZA" not in text_actual:
+                log("⚠️ Aún no hay actividades después de corregir fecha")
+                log("🔄 Intentando clic directo en HOY como último recurso...")
+        
+            # Último intento agresivo
+            try:
+                page.evaluate("""
+                    // Buscar cualquier botón con texto HOY o Hoy
+                    const elementos = document.querySelectorAll('button, a, [role="button"]');
+                    for (let el of elementos) {
+                        if (el.textContent && el.textContent.toUpperCase().includes('HOY')) {
+                            el.click();
+                            break;
+                        }
+                    }
+                """)
+                page.wait_for_timeout(3000)
+            except:
+                pass
             # VERIFICAR: ¿Tenemos actividades visibles ahora?
             current_text = page.text_content()
             if "INSCRIBIRSE" not in current_text and "PLAZA" not in current_text:
@@ -1120,7 +1200,7 @@ def debug_planning_html():
 
 @app.route('/debug_fecha_problema', methods=['GET'])
 def debug_fecha_problema():
-    """Debug ESPECÍFICO del problema de fecha inválida"""
+    """Debug ESPECÍFICO del problema de fecha inválida - VERSIÓN CORREGIDA"""
     from playwright.sync_api import sync_playwright
     
     logs = []
@@ -1134,13 +1214,19 @@ def debug_fecha_problema():
             context = browser.new_context(viewport={"width": 1280, "height": 900})
             page = context.new_page()
             
-            logs.append("1. Login...")
+            logs.append("1. Navegando a planning...")
             page.goto("https://member.resamania.com/enjoy/planning", wait_until="networkidle", timeout=30000)
             page.wait_for_timeout(5000)
             
-            # Verificar estado inicial
-            initial_text = page.text_content()
-            logs.append(f"2. Texto inicial muestra:")
+            # CORRECCIÓN: text_content() NO lleva argumentos
+            try:
+                initial_text = page.text_content()
+                logs.append(f"2. Texto inicial obtenido ({len(initial_text)} chars)")
+            except Exception as e:
+                logs.append(f"2. ❌ Error obteniendo texto: {e}")
+                # Intentar alternativa
+                initial_text = page.evaluate("() => document.body.innerText")
+                logs.append(f"   Alternativa: {len(initial_text)} chars")
             
             # Buscar problemas específicos
             problemas = {
@@ -1150,33 +1236,54 @@ def debug_fecha_problema():
                 "Actividades visibles": "INSCRIBIRSE" in initial_text or "PLAZA" in initial_text
             }
             
+            logs.append("3. Diagnóstico:")
             for problema, encontrado in problemas.items():
                 logs.append(f"   - {problema}: {'✅ SÍ' if encontrado else '❌ NO'}")
             
-            # Intentar solución
+            # Intentar solución si hay problemas
             if any([problemas["Fecha inválida"], problemas["Ningún resultado"], problemas["junio 2022"]]):
-                logs.append("3. ¡PROBLEMA DETECTADO! Aplicando solución...")
+                logs.append("4. ¡PROBLEMA DETECTADO! Aplicando solución...")
                 
-                # Buscar botón HOY
-                hoy_selectors = ["button:has-text('HOY')", "button:has-text('Hoy')"]
+                # SOLUCIÓN SIMPLE: Hacer clic en "HOY"
                 hoy_encontrado = False
                 
-                for selector in hoy_selectors:
-                    if page.locator(selector).count() > 0:
-                        logs.append(f"   ✅ Encontrado: {selector}")
-                        page.click(selector)
-                        logs.append(f"   ✅ Clic en {selector}")
+                # Opción 1: Buscar botón "HOY" con texto exacto
+                try:
+                    hoy_button = page.locator("button:has-text('HOY'), button:has-text('Hoy')").first
+                    if hoy_button.count() > 0 and hoy_button.is_visible():
+                        hoy_button.click()
+                        logs.append("   ✅ Clic en botón HOY")
                         hoy_encontrado = True
-                        break
+                except Exception as e:
+                    logs.append(f"   ❌ Error con botón HOY: {e}")
                 
+                # Opción 2: Buscar elemento que contenga "HOY" y sea clickeable
                 if not hoy_encontrado:
-                    logs.append("   ❌ No se encontró botón HOY")
+                    try:
+                        # Usar XPath para buscar cualquier elemento con texto HOY
+                        hoy_elements = page.locator("xpath=//*[contains(text(), 'HOY') or contains(text(), 'Hoy')]").all()
+                        for elem in hoy_elements[:3]:  # Probar primeros 3
+                            try:
+                                if elem.is_visible():
+                                    elem.click()
+                                    logs.append("   ✅ Clic en elemento con texto HOY")
+                                    hoy_encontrado = True
+                                    break
+                            except:
+                                continue
+                    except:
+                        pass
                 
-                # Esperar y verificar resultado
+                # Esperar a que cargue
                 page.wait_for_timeout(3000)
-                new_text = page.text_content()
                 
-                logs.append("4. Después del clic en HOY:")
+                # Verificar resultado
+                try:
+                    new_text = page.text_content()
+                except:
+                    new_text = page.evaluate("() => document.body.innerText")
+                
+                logs.append("5. Después del clic en HOY:")
                 nuevos_problemas = {
                     "Fecha inválida": "Fecha inválida" in new_text,
                     "Actividades visibles": "INSCRIBIRSE" in new_text or "PLAZA" in new_text
@@ -1186,24 +1293,43 @@ def debug_fecha_problema():
                     logs.append(f"   - {problema}: {'✅ SÍ' if encontrado else '❌ NO'}")
                 
                 if nuevos_problemas["Actividades visibles"]:
-                    logs.append("5. ¡SOLUCIÓN EXITOSA! Ahora hay actividades visibles")
+                    logs.append("6. ¡SOLUCIÓN EXITOSA! Ahora hay actividades visibles")
+                    
+                    # Mostrar primeras actividades
+                    lines = [l.strip() for l in new_text.split('\n') if l.strip()]
+                    activity_lines = []
+                    for line in lines:
+                        if "INSCRIBIRSE" in line or "PLAZA" in line:
+                            activity_lines.append(line[:80])
+                    
+                    if activity_lines:
+                        logs.append("7. Actividades encontradas:")
+                        for i, line in enumerate(activity_lines[:3]):
+                            logs.append(f"   {i+1}. {line}")
                 else:
-                    logs.append("5. ❌ La solución no funcionó")
+                    logs.append("6. ❌ La solución no funcionó")
+                    
+                    # Mostrar muestra del texto para debug
+                    logs.append(f"   Muestra texto: {new_text[:200]}...")
             
             else:
-                logs.append("3. ✅ No se detectaron problemas de fecha")
+                logs.append("4. ✅ No se detectaron problemas de fecha iniciales")
+                
+                if problemas["Actividades visibles"]:
+                    logs.append("5. ✅ Actividades ya visibles desde el inicio")
+                else:
+                    logs.append("5. ⚠️ Sin actividades visibles pero sin mensajes de error")
             
-            # Mostrar líneas relevantes
-            lines = [l.strip() for l in initial_text.split('\n') if l.strip()]
-            relevant_lines = []
-            for line in lines:
-                if any(keyword in line for keyword in ['HOY', 'Hoy', 'FECHA', 'INSCRIBIRSE', 'PLAZA', 'jun.', '2022']):
-                    relevant_lines.append(line[:80])
+            # Mostrar información del día actual
+            from datetime import datetime
+            today = datetime.now()
+            logs.append(f"8. Fecha actual del sistema: {today.day}/{today.month}/{today.year}")
             
-            if relevant_lines:
-                logs.append("6. Líneas relevantes encontradas:")
-                for i, line in enumerate(relevant_lines[:5]):
-                    logs.append(f"   {i+1}. {line}")
+            # Buscar fechas mencionadas en la página
+            import re
+            fecha_matches = re.findall(r'\d{1,2}\s+de\s+\w+\.?\s+de\s+\d{4}', initial_text)
+            if fecha_matches:
+                logs.append(f"9. Fechas mencionadas en la página: {fecha_matches[:3]}")
             
             browser.close()
             
@@ -1214,14 +1340,82 @@ def debug_fecha_problema():
             })
             
     except Exception as e:
-        logs.append(f"💥 ERROR: {str(e)}")
+        logs.append(f"💥 ERROR CRÍTICO: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
             "logs": logs
         }), 500
-
-
+@app.route('/debug_simple_hoy', methods=['GET'])
+def debug_simple_hoy():
+    """Prueba ULTRA simple - solo hace clic en HOY"""
+    from playwright.sync_api import sync_playwright
+    
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"]
+            )
+            page = browser.new_page()
+            
+            # Ir directo al planning
+            page.goto("https://member.resamania.com/enjoy/planning", timeout=30000)
+            page.wait_for_timeout(5000)
+            
+            # 1. Ver estado inicial
+            text_antes = page.evaluate("() => document.body.innerText")
+            
+            # 2. Intentar clic en HOY
+            try:
+                # Buscar botón HOY
+                elements = page.locator("button, a, div").all()
+                hoy_clickeado = False
+                
+                for elem in elements[:50]:  # Revisar primeros 50 elementos
+                    try:
+                        text = elem.text_content()
+                        if text and ('HOY' in text.upper() or 'TODAY' in text.upper()):
+                            elem.click()
+                            hoy_clickeado = True
+                            break
+                    except:
+                        continue
+                
+                if not hoy_clickeado:
+                    # Intentar con JavaScript
+                    page.evaluate("""
+                        () => {
+                            const buttons = Array.from(document.querySelectorAll('button'));
+                            const hoyBtn = buttons.find(btn => 
+                                btn.textContent && btn.textContent.toUpperCase().includes('HOY')
+                            );
+                            if (hoyBtn) hoyBtn.click();
+                        }
+                    """)
+                
+                page.wait_for_timeout(3000)
+                
+                # 3. Ver estado después
+                text_despues = page.evaluate("() => document.body.innerText")
+                
+                browser.close()
+                
+                return jsonify({
+                    "antes_actividades": "INSCRIBIRSE" in text_antes or "PLAZA" in text_antes,
+                    "despues_actividades": "INSCRIBIRSE" in text_despues or "PLAZA" in text_despues,
+                    "cambio": "INSCRIBIRSE" not in text_antes and "INSCRIBIRSE" in text_despues,
+                    "muestra_antes": text_antes[:300] + "..." if len(text_antes) > 300 else text_antes,
+                    "muestra_despues": text_despues[:300] + "..." if len(text_despues) > 300 else text_despues
+                })
+                
+            except Exception as e:
+                browser.close()
+                return jsonify({"error": str(e)})
+                
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+        
 
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar_actividad():
@@ -1618,6 +1812,7 @@ def main():
 # Solo ejecutar main si el script es ejecutado directamente, no importado.
 if __name__ == "__main__":
     main()
+
 
 
 
