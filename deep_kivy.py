@@ -1,602 +1,424 @@
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright
 from datetime import datetime
 from pathlib import Path
 import json
-from concurrent.futures import ThreadPoolExecutor
-import re
 import requests 
 import time
 import os
 from flask import Flask, request, jsonify
 import sys
-
-# ==========================================================
-# CONDICIONAL PARA ENTORNO HEADLESS (RENDER)
-# ==========================================================
-# En Render, NO hay GUI disponible
-GUI_AVAILABLE = False
-
-# Módulos dummy para evitar errores
-class DummyModule:
-    def __init__(self, *args, **kwargs): pass
-    def __getattr__(self, name): return lambda *args, **kwargs: self
-    def Tk(self): return self
-    def mainloop(self): pass
-    def protocol(self, *args): pass
-    def quit(self): pass
-    def destroy(self): pass
-
-class DummyStringVar:
-    def __init__(self, *args, **kwargs): self.value = kwargs.get('value', '')
-    def get(self): return self.value
-    def set(self, val): self.value = val
-
-class DummyMessagebox:
-    def showerror(*args, **kwargs): 
-        print("Mock: messagebox.showerror llamado (Ignorado en servidor)")
-
-# Crear módulos dummy para evitar import errors
-sys.modules['tkinter'] = DummyModule()
-sys.modules['tkinter.ttk'] = DummyModule()
-tk = DummyModule()
-ttk = DummyModule()
-messagebox = DummyMessagebox()
-tk.StringVar = DummyStringVar
+import re
 
 # ===============================
-# CONFIGURACIÓN (Variables de Entorno)
+# CONFIGURACIÓN
 # ===============================
-# En Render, usa variables de entorno:
-# ENJOY_USERNAME, ENJOY_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-
 LOGIN_URL = "https://member.resamania.com/enjoy"
 PLANNING_URL = "https://member.resamania.com/enjoy/planning"
 STATE_FILE = Path("enjoy_state.json")
 
-# --- CREDENCIALES desde variables de entorno ---
-USERNAME =  "anaurma@hotmail.com"
-PASSWORD = "Kerkrade1126"
-TELEGRAM_BOT_TOKEN = "7576773682:AAE8_4OC9lLAFNlOWBbFmYGj5MFDfkQxAsU"
-TELEGRAM_CHAT_ID = "1326867840"
-# ----------------------------------------------
-
-# Configuración de timeouts (ms)
-TIMEOUT_CONFIG = {
-    'navigation': 45000,  # Aumentado para Render
-    'element': 15000,
-    'short_wait': 3000,
-    'long_wait': 8000
-}
-
-# Variables globales
-ACTIVITY_NAME = ""
-ACTIVITY_HOUR = ""
-TARGET_DAY = ""
-TARGET_MONTH = ""
-
-# ===============================
-# LISTAS DE ACTIVIDADES
-# ===============================
-HORAS_DISPONIBLES = []
-for h in range(7, 21): 
-    for m in [0, 15, 30, 45]:
-        if h == 20 and m > 30: break 
-        HORAS_DISPONIBLES.append(f"{h:02d}:{m:02d}")
-
-ACTIVIDADES_DISPONIBLES = ["BODY PUMP", "ZUMBA", "PILATES", "GAP", "AQUAGYM", "BODY BALANCE", 
-                          "CICLO INDOOR", "FUNCIONAL 360", "BODY BALANCE VIRTUAL", 
-                          "CICLO INDOOR VIRTUAL", "BODY COMBAT", "BODY COMBAT VIRTUAL"]
-
-MESES_DISPONIBLES = [
-    "enero", "febrero", "marzo", "abril", "mayo", "junio",
-    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
-]
+# Variables de entorno en Render
+USERNAME = os.environ.get("ENJOY_USERNAME", "anaurma@hotmail.com")
+PASSWORD = os.environ.get("ENJOY_PASSWORD", "Kerkrade1126")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 # ===============================
 # UTILIDADES
 # ===============================
 def log(msg):
-    """Log con timestamp"""
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
-def send_telegram_message(text):
-    """Envía un mensaje usando la API de Telegram"""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        log("❌ ERROR: TELEGRAM_BOT_TOKEN o CHAT_ID no configurados.")
-        return False
-        
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        'chat_id': TELEGRAM_CHAT_ID,
-        'text': text,
-        'parse_mode': 'Markdown'
-    }
+def simple_login(page):
+    """Login SIMPLIFICADO y rápido"""
     try:
-        response = requests.post(url, data=payload, timeout=10)
-        if response.status_code == 200:
-            log("✅ Notificación de Telegram enviada.")
+        log("🔐 Intentando login rápido...")
+        
+        # Ir directamente a planning (a veces ya estás logueado)
+        page.goto(PLANNING_URL, wait_until="domcontentloaded", timeout=10000)
+        time.sleep(2)
+        
+        # Verificar si ya estamos logueados
+        page_content = page.content()
+        if "Cerrar sesión" in page_content or "Desconexión" in page_content:
+            log("✅ Ya estás logueado")
             return True
-        else:
-            log(f"❌ Error Telegram: {response.status_code}")
-            return False
-    except Exception as e:
-        log(f"💥 Error conexión Telegram: {e}")
-        return False
-
-# ===============================
-# GESTIÓN DE SESIÓN
-# ===============================
-class SessionManager:
-    
-    @staticmethod
-    def is_logged_in(page):
-        """Detecta si hay sesión activa"""
-        try:
-            indicators_of_success = [
-                page.locator("text=Planificación"),
-                page.locator("a:has-text('Cerrar sesión')"),
-            ]
-            is_success_indicated = any(ind.count() > 0 for ind in indicators_of_success) or "planning" in page.url.lower()
-            is_on_login_page = "login" in page.url.lower()
-            return is_success_indicated and not is_on_login_page
-        except Exception:
-            return False
-    
-    @staticmethod
-    def restore_session(page):
-        """Intenta restaurar sesión guardada"""
-        if not STATE_FILE.exists():
-            return False
         
-        log("🔄 Restaurando sesión guardada...")
+        # Si no, ir a login
+        page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=10000)
+        time.sleep(2)
+        
+        # Estrategia 1: Buscar formulario de login directo
         try:
-            page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
-            page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
+            # Intentar llenar email si el campo está visible
+            page.fill("input[type='email']", USERNAME)
+            time.sleep(1)
             
-            if SessionManager.is_logged_in(page):
-                log("✅ Sesión restaurada")
+            # Buscar y hacer clic en "Continuar" o similar
+            continue_buttons = page.locator("button:has-text('Continuar'), button:has-text('Continue'), button:has-text('Siguiente')")
+            if continue_buttons.count() > 0:
+                continue_buttons.first.click()
+                time.sleep(2)
+            
+            # Llenar contraseña
+            page.fill("input[type='password']", PASSWORD)
+            time.sleep(1)
+            
+            # Buscar botón de login final
+            login_buttons = page.locator("button:has-text('Conectarme'), button:has-text('Log in'), button:has-text('Entrar'), button:has-text('Acceder')")
+            if login_buttons.count() > 0:
+                login_buttons.first.click()
+            
+            time.sleep(3)
+            
+            # Verificar si login fue exitoso
+            page_content = page.content()
+            if "Cerrar sesión" in page_content or "Desconexión" in page_content:
+                log("✅ Login exitoso (método directo)")
                 return True
-        except Exception as e:
-            log(f"⚠️ Error restaurando sesión: {e}")
-        
-        return False
-    
-    @staticmethod
-    def perform_login(page, context):
-        """Realiza el login"""
-        log("🚪 Iniciando login...")
-        
-        try:
-            page.goto(LOGIN_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
-            
-            if SessionManager.is_logged_in(page):
-                log("✅ Ya estaba logueado")
-                return True
-            
-            # Buscar botón de login
-            selectors = [
-                "button:has-text('Iniciar sesión')",
-                "a:has-text('Iniciar sesión')",
-                "button:has-text('Acceder')",
-                "button:has-text('Entrar')",
-                "[role='button']:has-text('sesión')"
-            ]
-            
-            for selector in selectors:
-                try:
-                    if page.locator(selector).count() > 0:
-                        page.click(selector)
-                        log(f"✅ Click en: {selector}")
-                        time.sleep(2)
-                        break
-                except:
-                    continue
-            
-            # Email
-            email_selectors = ["input[type='email']", "input[placeholder*='email']", "input[name='email']"]
-            for selector in email_selectors:
-                try:
-                    page.fill(selector, USERNAME)
-                    log("📧 Email introducido")
-                    time.sleep(1)
-                    break
-                except:
-                    continue
-            
-            # Botón continuar
-            continue_selectors = ["button:has-text('Continuar')", "button:has-text('Siguiente')"]
-            for selector in continue_selectors:
-                try:
-                    page.click(selector)
-                    time.sleep(2)
-                    break
-                except:
-                    continue
-            
-            # Contraseña
-            pass_selectors = ["input[type='password']", "input[placeholder*='contraseña']"]
-            for selector in pass_selectors:
-                try:
-                    page.fill(selector, PASSWORD)
-                    log("🔑 Contraseña introducida")
-                    time.sleep(1)
-                    break
-                except:
-                    continue
-            
-            # Conectar
-            connect_selectors = ["button:has-text('Conectarme')", "button:has-text('Entrar')", "button:has-text('Log in')"]
-            for selector in connect_selectors:
-                try:
-                    page.click(selector)
-                    break
-                except:
-                    continue
-            
-            # Esperar login
-            time.sleep(5)
-            
-            if SessionManager.is_logged_in(page):
-                context.storage_state(path=str(STATE_FILE))
-                log("✅ Login exitoso")
-                return True
-            
-            raise Exception("Login fallido - no se detectó sesión activa")
-            
-        except Exception as e:
-            log(f"❌ Error en login: {e}")
-            return False
-
-# ===============================
-# GESTIÓN DE FECHAS
-# ===============================
-class DateNavigator:
-    @staticmethod
-    def ensure_date_selected(page, target_day, target_month):
-        """Garantiza que la fecha objetivo esté seleccionada"""
-        log(f"🎯 Seleccionando fecha: {target_day} de {target_month}")
-        
-        # Primero intentar hacer clic en HOY para resetear
-        try:
-            hoy_selectors = ["button:has-text('HOY')", "button:has-text('Hoy')"]
-            for selector in hoy_selectors:
-                if page.locator(selector).count() > 0:
-                    page.click(selector)
-                    log("✅ Click en HOY")
-                    time.sleep(3)
-                    break
         except:
             pass
         
-        # Si el día objetivo no es hoy, intentar seleccionarlo
-        from datetime import datetime
-        today = datetime.now().day
-        today_str = str(today)
-        
-        if target_day != today_str:
-            log(f"🔁 Buscamos día {target_day} (no es hoy)")
-            
-            # Intentar clic directo en el día
-            try:
-                day_elements = page.locator(f"text='{target_day}'").all()
-                for element in day_elements:
-                    if element.is_visible():
-                        element.click()
-                        log(f"✅ Click en día {target_day}")
-                        time.sleep(3)
-                        return True
-            except Exception as e:
-                log(f"⚠️ No se pudo hacer clic en día {target_day}: {e}")
-        
-        return True
-
-# ===============================
-# BÚSQUEDA DE ACTIVIDADES
-# ===============================
-class ActivityFinder:
-    @staticmethod
-    def find_activity_robust(page, activity_name, activity_hour):
-        """Búsqueda robusta de actividad"""
-        log(f"🔍 Buscando: '{activity_name}' a las '{activity_hour}'")
-        
-        # Obtener todo el texto de la página
+        # Estrategia 2: Buscar botón "Iniciar sesión" primero
         try:
-            all_text = page.evaluate("() => document.body.textContent").upper()
-        except:
-            all_text = page.content().upper()
-        
-        # Verificar si la actividad y hora están en el texto
-        if activity_name.upper() not in all_text:
-            log(f"❌ '{activity_name}' no encontrado en la página")
-            return -1
-        
-        # Buscar patrones de plazas
-        import re
-        
-        # Dividir en líneas para análisis más preciso
-        lines = all_text.split('\n')
-        for line in lines:
-            line_upper = line.upper().strip()
-            
-            # Filtrar líneas irrelevantes
-            if len(line_upper) < 20:
-                continue
-            
-            # Debe contener actividad Y hora
-            contains_activity = activity_name.upper() in line_upper
-            contains_hour = activity_hour in line_upper or activity_hour.replace(':', '.') in line_upper
-            
-            if contains_activity and contains_hour:
-                log(f"✅ Línea encontrada: {line_upper[:80]}...")
+            login_links = page.locator("a:has-text('Iniciar sesión'), button:has-text('Iniciar sesión')")
+            if login_links.count() > 0:
+                login_links.first.click()
+                time.sleep(2)
                 
-                # Extraer plazas
-                plazas = ActivityFinder._extract_spots_from_line(line_upper)
-                if plazas >= 0:
-                    return plazas
+                # Ahora intentar el formulario
+                page.fill("input[type='email']", USERNAME)
+                time.sleep(1)
+                page.fill("input[type='password']", PASSWORD)
+                time.sleep(1)
+                
+                submit_buttons = page.locator("button[type='submit'], button:has-text('Conectarme')")
+                if submit_buttons.count() > 0:
+                    submit_buttons.first.click()
+                
+                time.sleep(3)
+                
+                page_content = page.content()
+                if "Cerrar sesión" in page_content or "Desconexión" in page_content:
+                    log("✅ Login exitoso (método con botón)")
+                    return True
+        except:
+            pass
         
-        return -1
-    
-    @staticmethod
-    def _extract_spots_from_line(line):
-        """Extrae plazas de una línea de texto"""
-        import re
-        
-        # Buscar número antes de "PLAZA"
-        match = re.search(r'(\d+)\s+PLAZAS?\s+VACANTES?', line)
-        if match:
-            return int(match.group(1))
-        
-        # Buscar cualquier número en la línea
-        numbers = re.findall(r'\b(\d+)\b', line)
-        if numbers:
-            # Tomar el primer número (normalmente las plazas)
-            return int(numbers[0])
-        
-        # Si dice "COMPLETO"
-        if "COMPLETO" in line or "LLENO" in line:
-            return 0
-        
-        return -1
-
-# ===============================
-# FUNCIÓN PRINCIPAL DEL BOT
-# ===============================
-def run_bot(activity_name, activity_hour, target_day, target_month, headless=True):
-    """Ejecuta el bot y retorna número de plazas"""
-    log(f"🚀 Iniciando bot para {activity_name} {activity_hour} ({target_day} {target_month})")
-    
-    with sync_playwright() as p:
-        # Configuración para Render
-        browser = p.chromium.launch(
-            headless=headless,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-features=IsolateOrigins,site-per-process"
-            ]
-        )
-        
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 900},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        )
-        
-        page = context.new_page()
-        
+        # Estrategia 3: JavaScript directo
         try:
-            # 1. Login o restaurar sesión
-            if SessionManager.restore_session(page):
-                log("✅ Sesión restaurada")
-            else:
-                if not SessionManager.perform_login(page, context):
-                    log("❌ Login fallido")
-                    return {"status": "error", "message": "Login fallido"}
+            page.evaluate(f"""
+                () => {{
+                    // Buscar inputs de email
+                    const emailInputs = document.querySelectorAll("input[type='email'], input[name='email']");
+                    if (emailInputs.length > 0) {{
+                        emailInputs[0].value = '{USERNAME}';
+                    }}
+                    
+                    // Buscar inputs de password
+                    const passInputs = document.querySelectorAll("input[type='password'], input[name='password']");
+                    if (passInputs.length > 0) {{
+                        passInputs[0].value = '{PASSWORD}';
+                    }}
+                    
+                    // Buscar y hacer clic en botón de submit
+                    const submitButtons = document.querySelectorAll("button[type='submit'], button:has-text('Conectarme'), button:has-text('Log in')");
+                    if (submitButtons.length > 0) {{
+                        submitButtons[0].click();
+                    }}
+                }}
+            """)
             
-            # 2. Ir a planning
-            page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
-            time.sleep(3)
+            time.sleep(5)
             
-            # 3. Seleccionar fecha
-            DateNavigator.ensure_date_selected(page, target_day, target_month)
-            time.sleep(3)
-            
-            # 4. Buscar actividad
-            plazas = ActivityFinder.find_activity_robust(page, activity_name, activity_hour)
-            
-            if plazas > 0:
-                log(f"🎉 ¡ÉXITO! {plazas} plazas disponibles")
-                return {"status": "success", "plazas": plazas, "message": f"{plazas} plazas disponibles"}
-            elif plazas == 0:
-                log("⚠️ Actividad COMPLETA (0 plazas)")
-                return {"status": "complete", "plazas": 0, "message": "Actividad completa"}
-            elif plazas == -2:
-                log("✅ Ya estás inscrito")
-                return {"status": "inscrito", "message": "Ya estás inscrito"}
-            else:
-                log("❌ Actividad no encontrada")
-                return {"status": "not_found", "message": "Actividad no encontrada"}
+            page_content = page.content()
+            if "Cerrar sesión" in page_content or "Desconexión" in page_content:
+                log("✅ Login exitoso (método JavaScript)")
+                return True
                 
         except Exception as e:
-            log(f"💥 Error crítico: {e}")
+            log(f"⚠️ Error en JS: {e}")
+        
+        log("❌ No se pudo hacer login")
+        return False
+        
+    except Exception as e:
+        log(f"💥 Error en login: {e}")
+        return False
+
+def search_activity_simple(page, activity_name, activity_hour):
+    """Búsqueda SIMPLE de actividad"""
+    try:
+        log(f"🔍 Buscando '{activity_name}' a las '{activity_hour}'")
+        
+        # Obtener todo el texto
+        all_text = page.evaluate("() => document.body.textContent")
+        
+        # Convertir a mayúsculas para búsqueda insensible
+        all_text_upper = all_text.upper()
+        activity_upper = activity_name.upper()
+        
+        # Verificar si la actividad está en la página
+        if activity_upper not in all_text_upper:
+            log(f"❌ '{activity_name}' no encontrado")
+            return -1
+        
+        # Buscar la hora (formato HH:MM o HH.MM)
+        hour_pattern1 = activity_hour
+        hour_pattern2 = activity_hour.replace(':', '.')
+        
+        # Buscar líneas que contengan actividad y hora
+        lines = all_text.split('\n')
+        for line in lines:
+            line_upper = line.upper()
+            if activity_upper in line_upper and (hour_pattern1 in line or hour_pattern2 in line):
+                log(f"✅ Encontrada línea: {line[:80]}...")
+                
+                # Extraer número de plazas
+                import re
+                
+                # Patrón: "3 plazas vacantes"
+                match = re.search(r'(\d+)\s+plazas?\s+vacantes?', line_upper)
+                if match:
+                    plazas = int(match.group(1))
+                    log(f"🎉 {plazas} plazas encontradas")
+                    return plazas
+                
+                # Patrón: "COMPLETO"
+                if "COMPLETO" in line_upper or "LLENO" in line_upper:
+                    log("🔴 Actividad COMPLETA")
+                    return 0
+                
+                # Patrón: "INSCRITO"
+                if "INSCRITO" in line_upper or "RESERVADO" in line_upper:
+                    log("✅ Ya estás inscrito")
+                    return -2
+        
+        log("⚠️ Actividad encontrada pero sin información de plazas")
+        return -1
+        
+    except Exception as e:
+        log(f"💥 Error buscando actividad: {e}")
+        return -1
+
+def run_quick_bot(activity_name, activity_hour, target_day, target_month):
+    """Bot RÁPIDO optimizado para Render"""
+    log(f"🚀 Búsqueda rápida: {activity_name} {activity_hour}")
+    
+    with sync_playwright() as p:
+        try:
+            # Configuración mínima para Render
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--single-process"  # Menos consumo de memoria
+                ]
+            )
+            
+            # Contexto simple
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 900}
+            )
+            
+            page = context.new_page()
+            
+            # 1. Login rápido
+            if not simple_login(page):
+                return {"status": "error", "message": "Login fallido"}
+            
+            # 2. Ir a planning
+            page.goto(PLANNING_URL, wait_until="domcontentloaded", timeout=15000)
+            time.sleep(2)
+            
+            # 3. Intentar seleccionar día si no es hoy
+            from datetime import datetime
+            today = datetime.now().day
+            
+            if str(today) != target_day:
+                log(f"📅 Intentando seleccionar día {target_day}")
+                try:
+                    # Buscar el día en la página
+                    day_elements = page.locator(f"text='{target_day}'")
+                    if day_elements.count() > 0:
+                        day_elements.first.click()
+                        time.sleep(2)
+                except:
+                    log("⚠️ No se pudo cambiar el día, continuando...")
+            
+            # 4. Esperar a que carguen actividades
+            time.sleep(3)
+            
+            # 5. Buscar actividad
+            plazas = search_activity_simple(page, activity_name, activity_hour)
+            
+            # 6. Interpretar resultados
+            if plazas > 0:
+                return {
+                    "status": "success",
+                    "plazas": plazas,
+                    "message": f"{plazas} plazas disponibles para {activity_name} a las {activity_hour}"
+                }
+            elif plazas == 0:
+                return {
+                    "status": "complete",
+                    "plazas": 0,
+                    "message": f"Actividad {activity_name} COMPLETA"
+                }
+            elif plazas == -2:
+                return {
+                    "status": "inscrito",
+                    "message": f"Ya estás inscrito en {activity_name}"
+                }
+            else:
+                return {
+                    "status": "not_found",
+                    "message": f"No se encontró {activity_name} a las {activity_hour}"
+                }
+                
+        except Exception as e:
+            log(f"💥 Error en bot: {e}")
             return {"status": "error", "message": str(e)}
         
         finally:
-            browser.close()
-            log("👋 Bot finalizado")
+            try:
+                browser.close()
+            except:
+                pass
 
 # ===============================
-# API FLASK PARA RENDER
+# API FLASK
 # ===============================
 app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=2)
 
 @app.route('/')
 def index():
     return jsonify({
-        "status": "online",
         "service": "Enjoy Bot API",
-        "version": "1.0",
-        "endpoints": {
-            "/buscar": "GET - Busca plazas disponibles",
-            "/monitor": "POST - Inicia monitorización",
-            "/health": "GET - Estado del servicio"
-        },
-        "usage": "GET /buscar?actividad=ZUMBA&hora=20:00&dia=17&mes=diciembre"
+        "version": "2.0",
+        "status": "running",
+        "endpoint": "/buscar?actividad=ZUMBA&hora=20:00&dia=17&mes=diciembre",
+        "note": "Usa el endpoint /buscar con los parámetros actividad, hora, dia, mes"
     })
 
 @app.route('/buscar', methods=['GET'])
 def buscar():
-    """Endpoint principal para buscar plazas"""
+    """Endpoint principal - versión rápida"""
     try:
         # Obtener parámetros
-        actividad = request.args.get('actividad', '').upper()
-        hora = request.args.get('hora', '')
-        dia = request.args.get('dia', '')
-        mes = request.args.get('mes', '').lower()
+        actividad = request.args.get('actividad', '').strip()
+        hora = request.args.get('hora', '').strip()
+        dia = request.args.get('dia', '').strip()
+        mes = request.args.get('mes', '').strip().lower()
         
-        # Validar parámetros
+        # Validaciones básicas
         if not all([actividad, hora, dia, mes]):
             return jsonify({
                 "status": "error",
-                "message": "Faltan parámetros. Usa: actividad, hora, dia, mes"
-            }), 400
+                "message": "Faltan parámetros. Ejemplo: /buscar?actividad=ZUMBA&hora=20:00&dia=17&mes=diciembre"
+            })
         
-        if mes not in MESES_DISPONIBLES:
-            return jsonify({
-                "status": "error", 
-                "message": f"Mes inválido. Debe ser uno de: {', '.join(MESES_DISPONIBLES)}"
-            }), 400
-        
-        # Validar hora (formato HH:MM)
-        import re
+        # Validar formato de hora
         if not re.match(r'^\d{2}:\d{2}$', hora):
             return jsonify({
-                "status": "error",
+                "status": "error", 
                 "message": "Formato de hora inválido. Usa HH:MM (ej: 20:00)"
-            }), 400
+            })
         
-        log(f"📥 Petición recibida: {actividad} {hora} {dia}/{mes}")
+        log(f"🎯 Nueva búsqueda: {actividad} {hora} {dia}/{mes}")
         
-        # Ejecutar búsqueda
-        result = run_bot(
-            activity_name=actividad,
-            activity_hour=hora,
-            target_day=dia,
-            target_month=mes,
-            headless=True
-        )
+        # Ejecutar bot
+        result = run_quick_bot(actividad, hora, dia, mes)
         
-        # Enviar notificación Telegram si hay plazas
-        if result.get("status") == "success":
-            telegram_msg = f"✅ *PLAZAS DISPONIBLES!*\n\n" \
-                          f"Clase: *{actividad}*\n" \
-                          f"Hora: {hora}\n" \
-                          f"Día: {dia} de {mes}\n" \
-                          f"Plazas: **{result['plazas']}**"
-            executor.submit(send_telegram_message, telegram_msg)
+        # Enviar notificación si hay plazas
+        if result.get("status") == "success" and TELEGRAM_BOT_TOKEN:
+            try:
+                telegram_msg = f"✅ *PLAZAS ENCONTRADAS!*\n\nClase: *{actividad}*\nHora: {hora}\nDía: {dia} {mes}\nPlazas: {result['plazas']}"
+                requests.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                    json={"chat_id": TELEGRAM_CHAT_ID, "text": telegram_msg, "parse_mode": "Markdown"},
+                    timeout=5
+                )
+            except:
+                pass
         
         return jsonify(result)
         
     except Exception as e:
-        log(f"💥 Error en endpoint /buscar: {e}")
+        log(f"💥 Error en endpoint: {e}")
         return jsonify({
             "status": "error",
             "message": f"Error interno: {str(e)}"
-        }), 500
-
-@app.route('/monitor', methods=['POST'])
-def monitor():
-    """Inicia monitorización continua"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"status": "error", "message": "No JSON data"}), 400
-        
-        actividad = data.get('actividad', '').upper()
-        hora = data.get('hora', '')
-        dia = data.get('dia', '')
-        mes = data.get('mes', '').lower()
-        
-        if not all([actividad, hora, dia, mes]):
-            return jsonify({"status": "error", "message": "Faltan parámetros"}), 400
-        
-        # Función de monitorización (simplificada para Render)
-        def monitor_task():
-            SLEEP_SECONDS = 300  # 5 minutos
-            
-            while True:
-                log(f"🔄 Monitorización: {actividad} {hora}")
-                result = run_bot(actividad, hora, dia, mes, headless=True)
-                
-                if result.get("status") == "success":
-                    telegram_msg = f"🚨 *MONITOR: PLAZAS ENCONTRADAS!*\n\n" \
-                                  f"Clase: *{actividad}*\n" \
-                                  f"Hora: {hora}\n" \
-                                  f"Día: {dia} de {mes}\n" \
-                                  f"Plazas: **{result['plazas']}**"
-                    send_telegram_message(telegram_msg)
-                    break
-                
-                elif result.get("status") == "complete":
-                    log(f"😴 Actividad completa. Esperando {SLEEP_SECONDS//60} min...")
-                    time.sleep(SLEEP_SECONDS)
-                
-                else:
-                    log("❌ Error en monitorización. Reintentando...")
-                    time.sleep(SLEEP_SECONDS)
-        
-        # Iniciar monitorización en segundo plano
-        executor.submit(monitor_task)
-        
-        return jsonify({
-            "status": "monitoring",
-            "message": f"Monitorización iniciada para {actividad} {hora}"
         })
-        
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Endpoint de salud"""
+    """Health check simple"""
     return jsonify({
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "service": "Enjoy Bot API"
+        "timestamp": datetime.now().isoformat()
     })
 
-@app.route('/debug', methods=['GET'])
-def debug():
-    """Endpoint de debug"""
+@app.route('/test', methods=['GET'])
+def test():
+    """Endpoint de prueba rápida"""
     return jsonify({
-        "credentials_configured": bool(USERNAME and PASSWORD),
-        "telegram_configured": bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID),
-        "gui_available": GUI_AVAILABLE,
-        "state_file_exists": STATE_FILE.exists(),
-        "python_version": sys.version
+        "message": "Servicio funcionando",
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "credentials_set": bool(USERNAME and PASSWORD)
     })
+
+@app.route('/debug_login', methods=['GET'])
+def debug_login():
+    """Debug del login (sin búsqueda)"""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+        page = browser.new_context().new_page()
+        
+        try:
+            page.goto(LOGIN_URL, timeout=15000)
+            time.sleep(3)
+            
+            # Tomar screenshot (en base64 para debug)
+            screenshot_data = page.screenshot()
+            import base64
+            screenshot_b64 = base64.b64encode(screenshot_data).decode()
+            
+            # Verificar elementos
+            has_email = page.locator("input[type='email']").count() > 0
+            has_password = page.locator("input[type='password']").count() > 0
+            has_login_button = page.locator("button:has-text('Iniciar sesión')").count() > 0
+            
+            browser.close()
+            
+            return jsonify({
+                "status": "success",
+                "has_email_field": has_email,
+                "has_password_field": has_password,
+                "has_login_button": has_login_button,
+                "screenshot": screenshot_b64[:100] + "..." if len(screenshot_b64) > 100 else screenshot_b64
+            })
+            
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)})
 
 # ===============================
-# EJECUCIÓN PRINCIPAL PARA RENDER
+# EJECUCIÓN
 # ===============================
 if __name__ == "__main__":
-    # En Render, ejecutamos Flask
     port = int(os.environ.get("PORT", 5000))
     
-    print("=" * 50)
-    print("🚀 Enjoy Bot API - Iniciando en modo servidor")
+    print("=" * 60)
+    print("🚀 ENJOY BOT API - Versión Optimizada para Render")
     print(f"🌐 Puerto: {port}")
-    print(f"🔧 GUI disponible: {GUI_AVAILABLE}")
-    print(f"📱 Endpoints:")
-    print(f"   • http://localhost:{port}/buscar?actividad=ZUMBA&hora=20:00&dia=17&mes=diciembre")
-    print(f"   • http://localhost:{port}/health")
-    print(f"   • http://localhost:{port}/debug")
-    print("=" * 50)
-    
-    # Verificar credenciales
-    if not USERNAME or USERNAME == "anaurma@hotmail.com":
-        print("⚠️ ADVERTENCIA: Usa variables de entorno para credenciales:")
-        print("   ENJOY_USERNAME, ENJOY_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID")
+    print(f"🔐 Usuario: {USERNAME[:3]}...{'✅' if USERNAME else '❌'}")
+    print(f"🔑 Contraseña: {'✅ Configurada' if PASSWORD else '❌ No configurada'}")
+    print("=" * 60)
+    print("📡 Endpoints disponibles:")
+    print(f"   • GET  /buscar?actividad=ZUMBA&hora=20:00&dia=17&mes=diciembre")
+    print(f"   • GET  /health")
+    print(f"   • GET  /test")
+    print(f"   • GET  /debug_login")
+    print("=" * 60)
     
     app.run(host="0.0.0.0", port=port, debug=False)
