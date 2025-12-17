@@ -2,8 +2,7 @@ from playwright.sync_api import sync_playwright, expect, TimeoutError as Playwri
 from datetime import datetime
 from pathlib import Path
 import json
-import tkinter as tk
-from tkinter import ttk, messagebox
+
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import re
 import requests 
@@ -12,7 +11,12 @@ import os
 from flask import Flask, request, jsonify
 import threading
 import platform  # Añade este import al principio del archivo
-
+try:
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+    GUI_AVAILABLE = True
+except ImportError:
+    GUI_AVAILABLE = False
 # ===============================
 # CONFIGURACIÓN
 # ===============================
@@ -903,3 +907,4 @@ if __name__ == "__main__":
             log(f"❌ Error al abrir la GUI: {e}")
             log("🔄 Intentando arrancar Flask como plan de emergencia...")
             api.run(host='127.0.0.1', port=5000)
+
