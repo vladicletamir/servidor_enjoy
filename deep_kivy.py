@@ -80,6 +80,21 @@ def api_buscar():
 # ===============================
 # LÓGICA DEL BOT (EXTRACTO RELEVANTE)
 # ===============================
+def screenshot(page, name):
+    """Captura screenshot con timestamp"""
+    try:
+        # En Render usamos /tmp porque es una carpeta con permisos de escritura
+        Path("screenshots").mkdir(exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = Path("screenshots") / f"{name}_{ts}.png"
+        page.screenshot(path=str(path), timeout=5000)
+        log(f"📸 Screenshot guardada: {path}")
+    except Exception as e:
+        log(f"⚠️ No se pudo tomar screenshot (es normal en la nube): {e}")
+
+
+
+
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
@@ -797,13 +812,13 @@ def run_bot(headless=False):
             return plazas
             
         except Exception as e:
-            log(f"💥 Error crítico: {e}")
-            screenshot(page, "error_critico")
+            log(f"💥 Error crítico en el proceso del bot: {e}")
+            # Ahora que ya definiste screenshot arriba, esto no fallará
+            try:
+                screenshot(page, "error_critico")
+            except:
+                pass
             return -1
-        
-        finally:
-            browser.close()
-            log("👋 Bot finalizado")
 
 # ===============================
 # MODO SERVIDOR (API PARA CURL)
@@ -856,5 +871,6 @@ if __name__ == "__main__":
             app.run()
         except NameError:
             log("❌ Error: La clase EnjoyForm no está definida en este script.")
+
 
 
