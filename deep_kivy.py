@@ -2,21 +2,24 @@ from playwright.sync_api import sync_playwright, expect, TimeoutError as Playwri
 from datetime import datetime
 from pathlib import Path
 import json
-
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
+import os
+import platform
+import threading
 import re
 import requests 
-import time # Importado para la función time.sleep()
-import os
-from flask import Flask, request, jsonify
-import threading
-import platform  # Añade este import al principio del archivo
+import time
+
+# --- INTENTO DE IMPORTAR TKINTER (Solo para local) ---
 try:
     import tkinter as tk
     from tkinter import ttk, messagebox
     GUI_AVAILABLE = True
 except ImportError:
     GUI_AVAILABLE = False
+
+# --- IMPORTAR FLASK PARA EL SERVIDOR ---
+from flask import Flask, request, jsonify
+
 # ===============================
 # CONFIGURACIÓN
 # ===============================
@@ -24,12 +27,9 @@ LOGIN_URL = "https://member.resamania.com/enjoy"
 PLANNING_URL = "https://member.resamania.com/enjoy/planning?autologintoken=4a6425141ee392a2b1a1"
 STATE_FILE = Path("enjoy_state.json")
 
-# --- CREDENCIALES ---
-USERNAME = "anaurma@hotmail.com" # <--- VERIFICAR
-PASSWORD = "Kerkrade1126" # <--- VERIFICAR
-# --------------------
+USERNAME = "anaurma@hotmail.com" 
+PASSWORD = "Kerkrade1126" 
 
-# Configuración de timeouts (ms)
 TIMEOUT_CONFIG = {
     'navigation': 30000,
     'element': 10000,
@@ -37,123 +37,74 @@ TIMEOUT_CONFIG = {
     'long_wait': 5000
 }
 
-# --- CONFIGURACIÓN DE TELEGRAM ---
-TELEGRAM_BOT_TOKEN = "7576773682:AAE8_4OC9lLAFNlOWBbFmYGj5MFDfkQxAsU" # <--- TU TOKEN
-TELEGRAM_CHAT_ID = "1326867840" # <--- TU ID
-# ------------------------------------
+TELEGRAM_BOT_TOKEN = "7576773682:AAE8_4OC9lLAFNlOWBbFmYGj5MFDfkQxAsU"
+TELEGRAM_CHAT_ID = "1326867840"
 
-# Variables globales (se establecen al iniciar la búsqueda)
+# Variables globales
 ACTIVITY_NAME = ""
 ACTIVITY_HOUR = ""
 TARGET_DAY = ""
 TARGET_MONTH = ""
 
-# ===============================
-# CONFIGURACIÓN DE LISTAS
-# ===============================
-# Generamos las horas de 17:00 a 20:30 en tramos de 15 min
-HORAS_DISPONIBLES = []
-for h in range(7, 21): 
-    for m in [0, 15, 30, 45]:
-        if h == 20 and m > 30: break 
-        HORAS_DISPONIBLES.append(f"{h:02d}:{m:02d}")
-
-ACTIVIDADES_DISPONIBLES = ["BODY PUMP", "ZUMBA", "PILATES","GAP","AQUAGYM","BODY BALANCE", "CICLO INDOOR","FUNCIONAL 360","BODY BALANCE VIRTUAL", "CICLO INDOOR VIRTUAL","BODY COMBAT","BODY COMBAT VIRTUAL"]
-DIAS_DISPONIBLES = [str(i) for i in range(1, 32)]
-MESES_DISPONIBLES = [
-    "enero", "febrero", "marzo", "abril", "mayo", "junio",
-    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
-]
-
+MESES_DISPONIBLES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+ACTIVIDADES_DISPONIBLES = ["BODY PUMP", "ZUMBA", "PILATES","GAP","AQUAGYM","BODY BALANCE", "CICLO INDOOR"]
 
 # ===============================
-# UTILIDADES
+# SERVIDOR FLASK (PARA RENDER)
 # ===============================
-def log(msg):
-    """Log con timestamp"""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+api = Flask(__name__)
 
-def screenshot(page, name):
-    """Captura screenshot con timestamp"""
-    Path("screenshots").mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = Path("screenshots") / f"{name}_{ts}.png"
-    try:
-        page.screenshot(path=str(path), timeout=5000)
-        log(f"📸 Screenshot: {path}")
-    except Exception as e:
-        log(f"⚠️ Error capturando screenshot: {e}")
-
-def send_telegram_message(text):
-    """Envía un mensaje usando la API de Telegram"""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        log("❌ ERROR: TELEGRAM_BOT_TOKEN o CHAT_ID no configurados correctamente.")
-        return False
-        
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        'chat_id': TELEGRAM_CHAT_ID,
-        'text': text,
-        'parse_mode': 'Markdown' 
-    }
-    try:
-        response = requests.post(url, data=payload, timeout=5)
-        if response.status_code == 200:
-            log("✅ Notificación de Telegram enviada con éxito.")
-            return True
-        else:
-            log(f"❌ Error al enviar Telegram. Código: {response.status_code}")
-            log(f"   Respuesta: {response.text}")
-            return False
-    except Exception as e:
-        log(f"💥 Error de conexión al enviar Telegram: {e}")
-        return False
-
-# --- FUNCIÓN DE MONITORIZACIÓN ---
-def run_monitor(activity, hour, day, month):
-    """
-    Ejecuta el bot en un bucle cada 5 minutos hasta encontrar plazas.
-    """
+@api.route('/buscar', methods=['POST'])
+def api_buscar():
+    data = request.json
     global ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH
     
-    ACTIVITY_NAME = activity
-    ACTIVITY_HOUR = hour
-    TARGET_DAY = day
-    TARGET_MONTH = month
+    ACTIVITY_NAME = data.get("actividad", "ZUMBA")
+    ACTIVITY_HOUR = data.get("hora", "19:00")
+    TARGET_DAY = str(data.get("dia", "1"))
+    TARGET_MONTH = data.get("mes", "enero")
+
+    log(f"📥 CURL recibido con éxito. Configurando bot...")
+    log(f"⚙️ Tarea: {ACTIVITY_NAME} a las {ACTIVITY_HOUR} el día {TARGET_DAY}/{TARGET_MONTH}")
     
-    log(f"🕵️‍♂️ INICIANDO MONITORIZACIÓN: {activity} a las {hour} - DÍA {day}/{month}")
+    # Lanzamos el proceso en segundo plano
+    hilo_bot = threading.Thread(target=run_monitor, args=(ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH))
+    hilo_bot.start()
     
-    # 5 minutos = 300 segundos
-    SLEEP_SECONDS = 300 
+    return jsonify({
+        "status": "Monitorización iniciada",
+        "mensaje": "El bot está trabajando en segundo plano. Revisa los logs de Render y Telegram.",
+        "config": data
+    }), 200
+
+# ===============================
+# LÓGICA DEL BOT (EXTRACTO RELEVANTE)
+# ===============================
+def log(msg):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+def send_telegram_message(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {'chat_id': TELEGRAM_CHAT_ID, 'text': text, 'parse_mode': 'Markdown'}
+    try:
+        requests.post(url, data=payload, timeout=5)
+    except: pass
+
+def run_monitor(activity, hour, day, month):
+    global ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH
+    ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH = activity, hour, day, month
     
+    log(f"🚀 [BOT TRABAJANDO] Iniciando ciclo de búsqueda...")
     while True:
-        log("🔄 Ejecutando verificación en modo monitor...")
-        
-        # Llamamos a la función principal en modo silencioso (headless=True)
-        plazas = run_bot(headless=True) 
-        
+        plazas = run_bot(headless=True) # Siempre headless en servidor
         if plazas > 0:
-            msg_telegram = f"🚨 *¡PLAZA LIBRE ENCONTRADA!* 🚨\n\n" \
-                           f"Clase: *{ACTIVITY_NAME}*\n" \
-                           f"Hora: {ACTIVITY_HOUR}\n" \
-                           f"Día: {TARGET_DAY} de {TARGET_MONTH}\n" \
-                           f"Plazas: **{plazas}**\n\n" \
-                           f"¡Reserva inmediatamente!"
-            send_telegram_message(msg_telegram)
-            log("🎉 Monitorización finalizada con éxito (Plazas encontradas).")
-            break # Salir del bucle
-        
-        elif plazas == 0:
-            log(f"😴 Actividad sigue COMPLETA. Esperando {SLEEP_SECONDS // 60} minutos.")
-            time.sleep(SLEEP_SECONDS)
-            
+            send_telegram_message(f"🚨 ¡PLAZA LIBRE! {ACTIVITY_NAME} {hour} el {day}/{month}")
+            break
         elif plazas == -2:
-             log("🥳 El usuario se ha inscrito durante la monitorización. Deteniendo.")
-             break # Ya inscrito, detener monitor
-            
-        else: # plazas == -1 (Error)
-            log("❌ Error en la verificación. Intentando de nuevo en 5 minutos.")
-            time.sleep(SLEEP_SECONDS)
+            log("✅ Ya inscrito. Finalizando.")
+            break
+        log("😴 Sin plazas. Reintentando en 5 min...")
+        time.sleep(300)
 
 # ===============================
 # INTERFAZ GRÁFICA
@@ -884,27 +835,26 @@ def api_buscar():
 
 
 # ===============================
-# EJECUCIÓN ADAPTATIVA (CORREGIDA)
+# EJECUCIÓN ADAPTATIVA
 # ===============================
 if __name__ == "__main__":
-    # 1. Buscamos la variable específica que Render inyecta en sus servidores
-    # Si esta variable NO existe, asumimos que estamos en tu PC.
+    # Prioridad 1: Si estamos en Render
     EN_RENDER = os.getenv('RENDER') == 'true'
 
-    if EN_RENDER:
-        log("🌐 Entorno Cloud (Render) detectado.")
-        log("📡 Iniciando servidor Flask para recibir comandos CURL...")
-        # Render usa la variable PORT para decirnos en qué puerto escuchar
-        puerto = int(os.environ.get("PORT", 5000))
-        api.run(host='0.0.0.0', port=puerto)
+    if EN_RENDER or not GUI_AVAILABLE:
+        log("🌐 MODO SERVIDOR ACTIVADO")
+        log("📡 Esperando peticiones CURL en puerto " + os.environ.get("PORT", "5000"))
+        port = int(os.environ.get("PORT", 5000))
+        api.run(host='0.0.0.0', port=port)
     else:
-        log("💻 Entorno Local detectado.")
-        log("🎨 Abriendo interfaz gráfica (GUI)...")
+        # Prioridad 2: Si estamos en Local Windows/Mac con GUI
+        log("💻 MODO LOCAL DETECTADO (Abriendo Ventana)")
+        from concurrent.futures import ThreadPoolExecutor # Import necesario para EnjoyForm
+        # Nota: Aquí asumo que la clase EnjoyForm está definida arriba
         try:
             app = EnjoyForm()
             app.run()
-        except Exception as e:
-            log(f"❌ Error al abrir la GUI: {e}")
-            log("🔄 Intentando arrancar Flask como plan de emergencia...")
-            api.run(host='127.0.0.1', port=5000)
+        except NameError:
+            log("❌ Error: La clase EnjoyForm no está definida en este script.")
+
 
