@@ -1,38 +1,24 @@
-FROM python:3.11-slim
+# Imagen oficial de Playwright con Python
+FROM mcr.microsoft.com/playwright/python:v1.44.0-jammy
 
-# Evitar prompts
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Dependencias del sistema para Playwright
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    libnss3 \
-    libatk-bridge2.0-0 \
-    libx11-xcb1 \
-    libxcb-dri3-0 \
-    libdrm2 \
-    libxdamage1 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    libpangocairo-1.0-0 \
-    libgtk-3-0 \
-    fonts-liberation \
-    libxshmfence1 \
-    && rm -rf /var/lib/apt/lists/*
-
+# Crear carpeta de trabajo
 WORKDIR /app
 
+# Copiar dependencias
 COPY requirements.txt .
+
+# Instalar dependencias
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Instalar Playwright browsers
-RUN python -m playwright install chromium
-
+# Copiar el resto del proyecto
 COPY . .
 
-# Render escucha en $PORT
-EXPOSE 10000
+# Exponer puerto (si usas interfaz web)
+EXPOSE 8000
+
+# Comando de ejecución
+CMD ["python", "main.py"]
+
 
 CMD ["python", "servidor_enjoy.py"]
+
