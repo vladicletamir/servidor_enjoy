@@ -2,13 +2,22 @@ from playwright.sync_api import sync_playwright, expect, TimeoutError as Playwri
 from datetime import datetime
 from pathlib import Path
 import json
-import tkinter as tk
-from tkinter import ttk, messagebox
+#import tkinter as tk
+#from tkinter import ttk, messagebox
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import re
 import requests 
 import time # Importado para la función time.sleep()
 import os
+# Importar Tkinter solo si NO estamos en Render
+if os.getenv("RENDER", "").lower() != "true":
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+else:
+    tk = None
+    ttk = None
+    messagebox = None
+
 # ===============================
 # CONFIGURACIÓN
 # ===============================
@@ -875,4 +884,5 @@ if __name__ == "__main__":
         log("🖥️ MODO LOCAL (GUI)")
         app = EnjoyForm()
         app.run()
+
 
