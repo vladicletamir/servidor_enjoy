@@ -852,9 +852,28 @@ def run_bot(headless=False):
             browser.close()
             log("👋 Bot finalizado")
 
-# ===============================
-# EJECUCIÓN
-# ===============================
+# ===============================================================
+# MODO DUAL: LOCAL (GUI) o SERVIDOR (RENDER)
+# ===============================================================
+
 if __name__ == "__main__":
-    app = EnjoyForm()
-    app.run()
+
+    if IS_SERVER:
+        log("🌐 MODO SERVIDOR ACTIVADO (Render)")
+
+        # Actividad desde variables de entorno o valores por defecto
+        activity = os.getenv("ENJOY_ACTIVITY", "AQUAGYM    ")
+        hour = os.getenv("ENJOY_HOUR", "09:30")
+        day = os.getenv("ENJOY_DAY", "21")
+        month = os.getenv("ENJOY_MONTH", "DICIEMBRE")
+
+        log(f"📌 Monitorizando automáticamente: {activity} {hour} {day}/{month}")
+
+        run_monitor(activity, hour, day, month)
+
+    else:
+        log("🖥️ MODO LOCAL (GUI)")
+        app = EnjoyForm()
+        app.run()
+
+
