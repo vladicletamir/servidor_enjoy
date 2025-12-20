@@ -13,12 +13,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar el resto del proyecto
 COPY . .
 
-# Exponer puerto (si usas interfaz web)
+# Exponer puerto (solo si usas API, si no puedes quitarlo)
 EXPOSE 8000
 
-# Comando de ejecución
-CMD ["python", "main.py"]
+# Comando de ejecución (archivo único dual)
+CMD ["python", "enjoy_bot.py"]
 
 
-CMD ["python", "servidor_enjoy.py"]
 
