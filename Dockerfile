@@ -16,8 +16,5 @@ COPY . .
 # Exponer puerto (solo si usas API, si no puedes quitarlo)
 EXPOSE 8000
 
-# Comando de ejecución (archivo único dual)
-CMD ["python", "enjoy_bot.py"]
-
-
-
+# Comando de ejecución
+CMD ["python", "servidor_enjoy.py"]
