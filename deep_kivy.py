@@ -2,24 +2,13 @@ from playwright.sync_api import sync_playwright, expect, TimeoutError as Playwri
 from datetime import datetime
 from pathlib import Path
 import json
-import os
-import platform
-import threading
+import tkinter as tk
+from tkinter import ttk, messagebox
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import re
 import requests 
-import time
-
-# --- INTENTO DE IMPORTAR TKINTER (Solo para local) ---
-try:
-    import tkinter as tk
-    from tkinter import ttk, messagebox
-    GUI_AVAILABLE = True
-except ImportError:
-    GUI_AVAILABLE = False
-
-# --- IMPORTAR FLASK PARA EL SERVIDOR ---
-from flask import Flask, request, jsonify
-
+import time # Importado para la función time.sleep()
+import os
 # ===============================
 # CONFIGURACIÓN
 # ===============================
@@ -27,9 +16,19 @@ LOGIN_URL = "https://member.resamania.com/enjoy"
 PLANNING_URL = "https://member.resamania.com/enjoy/planning?autologintoken=4a6425141ee392a2b1a1"
 STATE_FILE = Path("enjoy_state.json")
 
-USERNAME = "anaurma@hotmail.com" 
-PASSWORD = "Kerkrade1126" 
 
+# --- CREDENCIALES ---
+
+USERNAME = os.getenv("ENJOY_USERNAME", "")
+PASSWORD = os.getenv("ENJOY_PASSWORD", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# --- VARIABLE ÚNICA PARA DETECTAR SERVIDOR ---
+IS_SERVER = os.getenv("RENDER", "").lower() == "true"
+# --------------------
+
+# Configuración de timeouts (ms)
 TIMEOUT_CONFIG = {
     'navigation': 30000,
     'element': 10000,
@@ -37,89 +36,122 @@ TIMEOUT_CONFIG = {
     'long_wait': 5000
 }
 
-TELEGRAM_BOT_TOKEN = "7576773682:AAE8_4OC9lLAFNlOWBbFmYGj5MFDfkQxAsU"
-TELEGRAM_CHAT_ID = "1326867840"
+# --- CONFIGURACIÓN DE TELEGRAM ---
 
-# Variables globales
+# ------------------------------------
+
+# Variables globales (se establecen al iniciar la búsqueda)
 ACTIVITY_NAME = ""
 ACTIVITY_HOUR = ""
 TARGET_DAY = ""
 TARGET_MONTH = ""
 
-MESES_DISPONIBLES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
-ACTIVIDADES_DISPONIBLES = ["BODY PUMP", "ZUMBA", "PILATES","GAP","AQUAGYM","BODY BALANCE", "CICLO INDOOR"]
+# ===============================
+# CONFIGURACIÓN DE LISTAS
+# ===============================
+# Generamos las horas de 17:00 a 20:30 en tramos de 15 min
+HORAS_DISPONIBLES = []
+for h in range(7, 21): 
+    for m in [0, 15, 30, 45]:
+        if h == 20 and m > 30: break 
+        HORAS_DISPONIBLES.append(f"{h:02d}:{m:02d}")
+
+ACTIVIDADES_DISPONIBLES = ["BODY PUMP", "ZUMBA", "PILATES","GAP","AQUAGYM","BODY BALANCE", "CICLO INDOOR","FUNCIONAL 360","BODY BALANCE VIRTUAL", "CICLO INDOOR VIRTUAL","BODY COMBAT","BODY COMBAT VIRTUAL"]
+DIAS_DISPONIBLES = [str(i) for i in range(1, 32)]
+MESES_DISPONIBLES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+]
+
 
 # ===============================
-# SERVIDOR FLASK (PARA RENDER)
+# UTILIDADES
 # ===============================
-api = Flask(__name__)
-
-@api.route('/buscar', methods=['POST'])
-def api_buscar():
-    data = request.json
-    global ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH
-    
-    ACTIVITY_NAME = data.get("actividad", "ZUMBA")
-    ACTIVITY_HOUR = data.get("hora", "19:00")
-    TARGET_DAY = str(data.get("dia", "1"))
-    TARGET_MONTH = data.get("mes", "enero")
-
-    log(f"📥 CURL recibido con éxito. Configurando bot...")
-    log(f"⚙️ Tarea: {ACTIVITY_NAME} a las {ACTIVITY_HOUR} el día {TARGET_DAY}/{TARGET_MONTH}")
-    
-    # Lanzamos el proceso en segundo plano
-    hilo_bot = threading.Thread(target=run_monitor, args=(ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH))
-    hilo_bot.start()
-    
-    return jsonify({
-        "status": "Monitorización iniciada",
-        "mensaje": "El bot está trabajando en segundo plano. Revisa los logs de Render y Telegram.",
-        "config": data
-    }), 200
-
-# ===============================
-# LÓGICA DEL BOT (EXTRACTO RELEVANTE)
-# ===============================
-def screenshot(page, name):
-    """Captura screenshot con timestamp"""
-    try:
-        # En Render usamos /tmp porque es una carpeta con permisos de escritura
-        Path("screenshots").mkdir(exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = Path("screenshots") / f"{name}_{ts}.png"
-        page.screenshot(path=str(path), timeout=5000)
-        log(f"📸 Screenshot guardada: {path}")
-    except Exception as e:
-        log(f"⚠️ No se pudo tomar screenshot (es normal en la nube): {e}")
-
-
-
-
 def log(msg):
+    """Log con timestamp"""
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-def send_telegram_message(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {'chat_id': TELEGRAM_CHAT_ID, 'text': text, 'parse_mode': 'Markdown'}
+def screenshot(page, name):
+    """Captura screenshot con timestamp"""
+    Path("screenshots").mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = Path("screenshots") / f"{name}_{ts}.png"
     try:
-        requests.post(url, data=payload, timeout=5)
-    except: pass
+        page.screenshot(path=str(path), timeout=5000)
+        log(f"📸 Screenshot: {path}")
+    except Exception as e:
+        log(f"⚠️ Error capturando screenshot: {e}")
 
+def send_telegram_message(text):
+    """Envía un mensaje usando la API de Telegram"""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        log("❌ ERROR: TELEGRAM_BOT_TOKEN o CHAT_ID no configurados correctamente.")
+        return False
+        
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        'chat_id': TELEGRAM_CHAT_ID,
+        'text': text,
+        'parse_mode': 'Markdown' 
+    }
+    try:
+        response = requests.post(url, data=payload, timeout=5)
+        if response.status_code == 200:
+            log("✅ Notificación de Telegram enviada con éxito.")
+            return True
+        else:
+            log(f"❌ Error al enviar Telegram. Código: {response.status_code}")
+            log(f"   Respuesta: {response.text}")
+            return False
+    except Exception as e:
+        log(f"💥 Error de conexión al enviar Telegram: {e}")
+        return False
+
+# --- FUNCIÓN DE MONITORIZACIÓN ---
 def run_monitor(activity, hour, day, month):
+    """
+    Ejecuta el bot en un bucle cada 5 minutos hasta encontrar plazas.
+    """
     global ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH
-    ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH = activity, hour, day, month
     
-    log(f"🚀 [BOT TRABAJANDO] Iniciando ciclo de búsqueda...")
+    ACTIVITY_NAME = activity
+    ACTIVITY_HOUR = hour
+    TARGET_DAY = day
+    TARGET_MONTH = month
+    
+    log(f"🕵️‍♂️ INICIANDO MONITORIZACIÓN: {activity} a las {hour} - DÍA {day}/{month}")
+    
+    # 5 minutos = 300 segundos
+    SLEEP_SECONDS = 300 
+    
     while True:
-        plazas = run_bot(headless=True) # Siempre headless en servidor
+        log("🔄 Ejecutando verificación en modo monitor...")
+        
+        # Llamamos a la función principal en modo silencioso (headless=True)
+        plazas = run_bot(headless=True) 
+        
         if plazas > 0:
-            send_telegram_message(f"🚨 ¡PLAZA LIBRE! {ACTIVITY_NAME} {hour} el {day}/{month}")
-            break
+            msg_telegram = f"🚨 *¡PLAZA LIBRE ENCONTRADA!* 🚨\n\n" \
+                           f"Clase: *{ACTIVITY_NAME}*\n" \
+                           f"Hora: {ACTIVITY_HOUR}\n" \
+                           f"Día: {TARGET_DAY} de {TARGET_MONTH}\n" \
+                           f"Plazas: **{plazas}**\n\n" \
+                           f"¡Reserva inmediatamente!"
+            send_telegram_message(msg_telegram)
+            log("🎉 Monitorización finalizada con éxito (Plazas encontradas).")
+            break # Salir del bucle
+        
+        elif plazas == 0:
+            log(f"😴 Actividad sigue COMPLETA. Esperando {SLEEP_SECONDS // 60} minutos.")
+            time.sleep(SLEEP_SECONDS)
+            
         elif plazas == -2:
-            log("✅ Ya inscrito. Finalizando.")
-            break
-        log("😴 Sin plazas. Reintentando en 5 min...")
-        time.sleep(300)
+             log("🥳 El usuario se ha inscrito durante la monitorización. Deteniendo.")
+             break # Ya inscrito, detener monitor
+            
+        else: # plazas == -1 (Error)
+            log("❌ Error en la verificación. Intentando de nuevo en 5 minutos.")
+            time.sleep(SLEEP_SECONDS)
 
 # ===============================
 # INTERFAZ GRÁFICA
@@ -812,65 +844,17 @@ def run_bot(headless=False):
             return plazas
             
         except Exception as e:
-            log(f"💥 Error crítico en el proceso del bot: {e}")
-            # Ahora que ya definiste screenshot arriba, esto no fallará
-            try:
-                screenshot(page, "error_critico")
-            except:
-                pass
+            log(f"💥 Error crítico: {e}")
+            screenshot(page, "error_critico")
             return -1
+        
+        finally:
+            browser.close()
+            log("👋 Bot finalizado")
 
 # ===============================
-# MODO SERVIDOR (API PARA CURL)
-# ===============================
-api = Flask(__name__)
-
-@api.route('/buscar', methods=['POST'])
-def api_buscar():
-    """
-    Endpoint para recibir peticiones curl.
-    Ejemplo: curl -X POST http://url-de-render/buscar -H "Content-Type: application/json" \
-             -d '{"actividad":"ZUMBA", "hora":"19:00", "dia":"25", "mes":"diciembre"}'
-    """
-    data = request.json
-    global ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH
-    
-    ACTIVITY_NAME = data.get("actividad", ACTIVITY_NAME)
-    ACTIVITY_HOUR = data.get("hora", ACTIVITY_HOUR)
-    TARGET_DAY = str(data.get("dia", TARGET_DAY))
-    TARGET_MONTH = data.get("mes", TARGET_MONTH)
-
-    log(f"📥 Petición recibida vía CURL: {ACTIVITY_NAME} a las {ACTIVITY_HOUR}")
-    
-    # Ejecutamos la monitorización en un hilo separado para no bloquear la respuesta del curl
-    thread = threading.Thread(target=run_monitor, args=(ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH))
-    thread.start()
-    
-    return jsonify({"status": "Monitorización iniciada", "config": data}), 200
-
-
-# ===============================
-# EJECUCIÓN ADAPTATIVA
+# EJECUCIÓN
 # ===============================
 if __name__ == "__main__":
-    # Prioridad 1: Si estamos en Render
-    EN_RENDER = os.getenv('RENDER') == 'true'
-
-    if EN_RENDER or not GUI_AVAILABLE:
-        log("🌐 MODO SERVIDOR ACTIVADO")
-        log("📡 Esperando peticiones CURL en puerto " + os.environ.get("PORT", "5000"))
-        port = int(os.environ.get("PORT", 5000))
-        api.run(host='0.0.0.0', port=port)
-    else:
-        # Prioridad 2: Si estamos en Local Windows/Mac con GUI
-        log("💻 MODO LOCAL DETECTADO (Abriendo Ventana)")
-        from concurrent.futures import ThreadPoolExecutor # Import necesario para EnjoyForm
-        # Nota: Aquí asumo que la clase EnjoyForm está definida arriba
-        try:
-            app = EnjoyForm()
-            app.run()
-        except NameError:
-            log("❌ Error: La clase EnjoyForm no está definida en este script.")
-
-
-
+    app = EnjoyForm()
+    app.run()
