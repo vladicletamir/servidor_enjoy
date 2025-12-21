@@ -852,7 +852,7 @@ def run_bot(headless=False):
             
             page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
             page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
-            
+            html = page.content() print("HTML recibido:", html[:500], flush=True)
             if not DateNavigator.ensure_date_selected(page):
                 log("❌ No se pudo seleccionar la fecha")
                 return -1
@@ -898,6 +898,7 @@ if __name__ == "__main__":
         log("🖥️ MODO LOCAL (GUI)")
         app = EnjoyForm()
         app.run()
+
 
 
 
