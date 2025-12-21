@@ -141,7 +141,8 @@ def run_monitor(activity, hour, day, month):
     Ejecuta el bot en un bucle cada 5 minutos hasta encontrar plazas.
     """
     global ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH
-    
+    global MONITOR_ACTIVO 
+    MONITOR_ACTIVO = True
     ACTIVITY_NAME = activity
     ACTIVITY_HOUR = hour
     TARGET_DAY = day
@@ -904,6 +905,7 @@ if __name__ == "__main__":
         log("🖥️ MODO LOCAL (GUI)")
         app = EnjoyForm()
         app.run()
+
 
 
 
