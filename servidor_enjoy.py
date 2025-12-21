@@ -12,6 +12,11 @@ import os
 import logging
 import sys
 
+# Estado global del monitor 
+MONITOR_ACTIVO = False 
+ULTIMA_VERIFICACION = None 
+PROXIMA_VERIFICACION = None
+
 # Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
@@ -899,6 +904,7 @@ if __name__ == "__main__":
         log("🖥️ MODO LOCAL (GUI)")
         app = EnjoyForm()
         app.run()
+
 
 
 
