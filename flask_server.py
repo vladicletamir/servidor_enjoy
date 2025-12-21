@@ -23,7 +23,7 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port)
 
 @app.route("/check") 
-def check():
+def check(): 
     print("📡 Endpoint /check recibido", flush=True) 
     try: 
         from servidor_enjoy import run_bot 
