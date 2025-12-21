@@ -28,7 +28,7 @@ def check():
     try: 
         from servidor_enjoy import run_bot 
         plazas = run_bot(headless=True) 
-        return jsonify({"plazas": plazas}) except 
-    Exception as e: 
+        return jsonify({"plazas": plazas}) 
+    except Exception as e: 
         print(f"❌ Error en /check: {e}", flush=True) 
         return jsonify({"error": str(e), "plazas": None})
