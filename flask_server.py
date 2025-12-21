@@ -21,3 +21,14 @@ def monitor():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
+
+@app.route("/check") 
+def check():
+    print("📡 Endpoint /check recibido", flush=True) 
+    try: 
+        from servidor_enjoy 
+        import run_bot plazas = run_bot(headless=True) 
+        return jsonify({"plazas": plazas}) except 
+    Exception as e: 
+        print(f"❌ Error en /check: {e}", flush=True) 
+        return jsonify({"error": str(e), "plazas": None})
