@@ -10,10 +10,10 @@ def home():
 
 @app.route("/monitor")
 def monitor():
-    activity = os.getenv("ENJOY_ACTIVITY", "BODY PUMP")
-    hour = os.getenv("ENJOY_HOUR", "19:00")
-    day = os.getenv("ENJOY_DAY", "21")
-    month = os.getenv("ENJOY_MONTH", "enero")
+    activity = os.getenv("ENJOY_ACTIVITY", "AQUAGYM")
+    hour = os.getenv("ENJOY_HOUR", "09:30")
+    day = os.getenv("ENJOY_DAY", "22")
+    month = os.getenv("ENJOY_MONTH", "DICIEMBRE")
 
     run_monitor(activity, hour, day, month)
     return jsonify({"status": "monitor started"})
