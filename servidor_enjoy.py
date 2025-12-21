@@ -9,6 +9,20 @@ import re
 import requests 
 import time # Importado para la función time.sleep()
 import os
+import logging
+import sys
+
+# Configuración de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+log = logging.getLogger("EnjoyBot")
+
 # Importar Tkinter solo si NO estamos en Render
 if os.getenv("RENDER", "").lower() != "true":
     import tkinter as tk
@@ -884,5 +898,6 @@ if __name__ == "__main__":
         log("🖥️ MODO LOCAL (GUI)")
         app = EnjoyForm()
         app.run()
+
 
 
