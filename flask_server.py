@@ -26,8 +26,7 @@ if __name__ == "__main__":
 def check():
     print("📡 Endpoint /check recibido", flush=True) 
     try: 
-        from servidor_enjoy 
-        import run_bot plazas = run_bot(headless=True) 
+        from servidor_enjoy import run_bot plazas = run_bot(headless=True) 
         return jsonify({"plazas": plazas}) except 
     Exception as e: 
         print(f"❌ Error en /check: {e}", flush=True) 
