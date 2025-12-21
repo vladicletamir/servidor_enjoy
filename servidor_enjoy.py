@@ -141,7 +141,8 @@ def run_monitor(activity, hour, day, month):
     Ejecuta el bot en un bucle cada 5 minutos hasta encontrar plazas.
     """
     global ACTIVITY_NAME, ACTIVITY_HOUR, TARGET_DAY, TARGET_MONTH
-    global MONITOR_ACTIVO 
+    global MONITOR_ACTIVO
+    
     MONITOR_ACTIVO = True
     ACTIVITY_NAME = activity
     ACTIVITY_HOUR = hour
@@ -155,7 +156,12 @@ def run_monitor(activity, hour, day, month):
     
     while True:
         log("🔄 Ejecutando verificación en modo monitor...")
-        
+        from datetime import datetime, timedelta
+
+        global ULTIMA_VERIFICACION, PROXIMA_VERIFICACION
+        ULTIMA_VERIFICACION = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        PROXIMA_VERIFICACION = (datetime.now() + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+
         # Llamamos a la función principal en modo silencioso (headless=True)
         plazas = run_bot(headless=True) 
         
@@ -905,6 +911,7 @@ if __name__ == "__main__":
         log("🖥️ MODO LOCAL (GUI)")
         app = EnjoyForm()
         app.run()
+
 
 
 
