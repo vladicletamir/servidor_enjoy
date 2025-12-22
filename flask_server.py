@@ -41,7 +41,13 @@ def check():
     except Exception as e:
         print(f"❌ Error en /check: {e}", flush=True)
         return jsonify({"error": str(e), "plazas": None})
-
+@app.route("/check") 
+def check(): 
+    print("📡 Endpoint /check recibido", flush=True) 
+    from servidor_enjoy 
+    import run_bot 
+    plazas = run_bot(headless=True) 
+    return jsonify({"plazas": plazas})
 @app.route("/status")
 def status():
     print("📡 Endpoint /status recibido", flush=True)
