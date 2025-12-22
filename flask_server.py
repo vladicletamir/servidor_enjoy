@@ -22,11 +22,14 @@ def monitor():
     print("📡 Endpoint /monitor recibido", flush=True)
 
     activity = os.getenv("ENJOY_ACTIVITY", "BODY PUMP")
-    hour = os.getenv("ENJOY_HOUR", "19:00")
+    hour = os.getenv("ENJOY_HOUR", "18:00")
     day = os.getenv("ENJOY_DAY", "21")
     month = os.getenv("ENJOY_MONTH", "DICIEMBRE")
 
-    run_monitor(activity, hour, day, month)
+    # Lanzamos monitor en hilo separado para no bloquear Flask
+    import threading
+    threading.Thread(target=run_monitor, args=(activity, hour, day, month), daemon=True).start()
+
     return jsonify({"status": "monitor started"})
 
 @app.route("/check")
@@ -55,3 +58,4 @@ def status():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
