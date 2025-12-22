@@ -835,8 +835,36 @@ def run_bot(headless=False):
     
     with sync_playwright() as p:
         # Pasa el argumento 'headless'
-        browser = p.chromium.launch(headless=headless) 
-        context = browser.new_context(viewport={"width": 1280, "height": 900})
+        browser = p.chromium.launch(
+            headless=headless,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-web-security",
+                "--disable-features=IsolateOrigins,site-per-process"
+            ]
+        )
+
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 900},
+            locale="es-ES",
+            timezone_id="Europe/Madrid",
+            java_script_enabled=True,
+        )
+
+        context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        """)
+
+        #browser = p.chromium.launch(headless=headless) 
+        #context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
         
         try:
@@ -913,6 +941,7 @@ if __name__ == "__main__":
         log("🖥️ MODO LOCAL (GUI)")
         app = EnjoyForm()
         app.run()
+
 
 
 
