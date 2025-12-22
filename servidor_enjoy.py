@@ -846,7 +846,9 @@ def run_bot(headless=False):
                 #    Aseguramos que la URL sea la de PLANNING y el estado sea 'networkidle'.
                 page.goto(PLANNING_URL, wait_until="networkidle", timeout=TIMEOUT_CONFIG['navigation'])
                 page.wait_for_timeout(TIMEOUT_CONFIG['long_wait'])
-
+                # DEBUG: ver qué HTML devuelve la web en Render 
+                html = page.content()
+                print("🔍 HTML recibido (primeros 500 chars):", html[:500], flush=True)
                 if SessionManager.is_logged_in(page):
                     log("✅ Sesión restaurada y verificada.")
                 else:
@@ -911,6 +913,7 @@ if __name__ == "__main__":
         log("🖥️ MODO LOCAL (GUI)")
         app = EnjoyForm()
         app.run()
+
 
 
 
