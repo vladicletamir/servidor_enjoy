@@ -507,6 +507,9 @@ class SessionManager:
     @staticmethod
     def _click_connect(page):
         selectors = ["button:has-text('Conectarme a mi club')", "button:has-text('Conectarme')", "button:has-text('Entrar')"]
+        page.wait_for_timeout(3000) 
+        html = page.content() 
+        print("🔍 HTML tras intentar login:", html[:500], flush=True)
         for frame in [page] + page.frames:
             for selector in selectors:
                 try:
@@ -941,6 +944,7 @@ if __name__ == "__main__":
         log("🖥️ MODO LOCAL (GUI)")
         app = EnjoyForm()
         app.run()
+
 
 
 
