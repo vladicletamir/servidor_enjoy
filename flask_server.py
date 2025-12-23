@@ -31,7 +31,9 @@ def monitor():
     threading.Thread(target=run_monitor, args=(activity, hour, day, month), daemon=True).start()
 
     return jsonify({"status": "monitor started"})
-
+@app.route("/health") 
+def health(): 
+    return "ok", 200
 
 @app.route("/check") 
 def check(): 
