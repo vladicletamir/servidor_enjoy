@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Railway asigna el puerto en la variable PORT
 ENV PORT=8080
 EXPOSE 8080
 
