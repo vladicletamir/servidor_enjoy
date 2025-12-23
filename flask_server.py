@@ -39,18 +39,10 @@ def check():
     from servidor_enjoy import run_bot 
     plazas = run_bot(headless=True) 
     return jsonify({"plazas": plazas})
-@app.route("/status")
-def status():
-    print("📡 Endpoint /status recibido", flush=True)
-    return jsonify({
-        "monitor_activo": MONITOR_ACTIVO,
-        "actividad": ACTIVITY_NAME,
-        "hora": ACTIVITY_HOUR,
-        "dia": TARGET_DAY,
-        "mes": TARGET_MONTH,
-        "ultima_verificacion": ULTIMA_VERIFICACION,
-        "proxima_verificacion": PROXIMA_VERIFICACION
-    })
+
+@app.route("/status") 
+def status(): 
+    return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
