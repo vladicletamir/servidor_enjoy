@@ -52,7 +52,7 @@ def status():
         "proxima_verificacion": PROXIMA_VERIFICACION
     })
 
-if __name__ == "__main__": 
-    port = int(os.environ.get("PORT", 8080)) 
-    print(f"🚀 Flask arrancando en puerto {port}", flush=True) 
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "8080"))
+    print(f"🚀 Flask arrancando en puerto {port}", flush=True)
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
